@@ -3,7 +3,7 @@ map $http_upgrade $bgremover_upgrade {
     ""      close;
 }
 
-upstream bgremover_node {
+upstream background_remover_api {
     server 127.0.0.1:3014;
     keepalive 16;
 }
@@ -23,7 +23,7 @@ server {
     }
 
     location / {
-        proxy_pass http://bgremover_node;
+        proxy_pass http://background_remover_api;
         proxy_http_version 1.1;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;

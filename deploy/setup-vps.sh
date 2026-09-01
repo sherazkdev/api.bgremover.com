@@ -1,18 +1,18 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Run from the project root on the VPS (as root or with sudo):
+# Run from /var/www/background-remover-api on the VPS:
 #   chmod +x deploy/setup-vps.sh
 #   sudo bash deploy/setup-vps.sh
 
 APP_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-SITE_NAME="bgremove.recipehubapi.com"
-NGINX_AVAIL="/etc/nginx/sites-available/${SITE_NAME}"
-NGINX_ENABLED="/etc/nginx/sites-enabled/${SITE_NAME}"
-SERVICE_PATH="/etc/systemd/system/bgremover.service"
-NPM_BIN="$(command -v npm)"
+NGINX_NAME="background-remover-api"
+PM2_NAME="background-remover-api"
+DOMAIN="bgremove.recipehubapi.com"
+NGINX_AVAIL="/etc/nginx/sites-available/${NGINX_NAME}"
+NGINX_ENABLED="/etc/nginx/sites-enabled/${NGINX_NAME}"
 
-if [[ -z "${NPM_BIN}" ]]; then
+if ! command -v npm >/dev/null 2>&1; then
   echo "npm not found in PATH. Install Node 22+ first."
   exit 1
 fi
@@ -22,11 +22,11 @@ if [[ ! -d /etc/nginx/sites-available ]]; then
   exit 1
 fi
 
-sed "s#WorkingDirectory=.*#WorkingDirectory=${APP_DIR}#" "${APP_DIR}/deploy/bgremover.service" \
-  | sed "s#ExecStart=.*#ExecStart=${NPM_BIN} start#" \
-  > "${SERVICE_PATH}"
+if ! command -v pm2 >/dev/null 2>&1; then
+  npm install -g pm2
+fi
 
-cp "${APP_DIR}/deploy/nginx.conf" "${NGINX_AVAIL}"
+cp "${APP_DIR}/deploy/${NGINX_NAME}" "${NGINX_AVAIL}"
 ln -sfn "${NGINX_AVAIL}" "${NGINX_ENABLED}"
 
 nginx -t
@@ -34,14 +34,17 @@ systemctl enable nginx
 systemctl start nginx
 systemctl reload nginx
 
-systemctl daemon-reload
-systemctl enable bgremover
-systemctl restart bgremover
-systemctl --no-pager --full status bgremover || true
+cd "${APP_DIR}"
+pm2 delete "${PM2_NAME}" >/dev/null 2>&1 || true
+pm2 start "${APP_DIR}/deploy/ecosystem.config.cjs"
+pm2 save
+pm2 startup systemd -u root --hp /root >/dev/null 2>&1 || true
+pm2 status
 
 echo
-echo "Nginx -> http://127.0.0.1:3014  (server_name ${SITE_NAME} www.${SITE_NAME})"
-echo "App dir: ${APP_DIR}"
-echo "Check: curl -I http://127.0.0.1:3014/api/v1/health"
-echo "Public: http://${SITE_NAME}/  (DNS A record -> this VPS)"
-echo "TLS: sudo certbot --nginx -d ${SITE_NAME} -d www.${SITE_NAME}"
+echo "Folder: ${APP_DIR}"
+echo "Nginx:  /etc/nginx/sites-available/${NGINX_NAME}"
+echo "PM2:    ${PM2_NAME} -> http://127.0.0.1:3014"
+echo "Check:  curl -I http://127.0.0.1:3014/api/v1/health"
+echo "Public: http://${DOMAIN}/  (DNS A record -> this VPS)"
+echo "TLS:    sudo certbot --nginx -d ${DOMAIN} -d www.${DOMAIN}"
