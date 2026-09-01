@@ -7,6 +7,13 @@ export function renderIndexPage(env: Env): string {
   const removeUrl = `${prefix}/remove-background`;
   const healthUrl = `${prefix}/health`;
   const readyUrl = `${prefix}/health/ready`;
+  const maxMb = env.MAX_FILE_SIZE_MB;
+  const curlCommand = `curl -X POST ${removeUrl} \\
+  -H "x-api-key: $API_KEY" \\
+  -F image=@photo.jpg \\
+  -F format=png \\
+  -F quality=hd \\
+  -F responseMode=json`;
 
   return `<!doctype html>
 <html lang="en">
@@ -16,141 +23,750 @@ export function renderIndexPage(env: Env): string {
   <title>${APP_NAME}</title>
   <style>
     :root {
-      color-scheme: dark;
-      --bg: #0b1020;
-      --panel: #141a2c;
-      --line: #2a334d;
-      --text: #eef2ff;
-      --muted: #9aa6c3;
-      --accent: #6ea8ff;
-      --ok: #3dcc8a;
-      --bad: #ff6b7a;
+      color-scheme: light;
+      --bg: #F8FAFC;
+      --card: #FFFFFF;
+      --primary: #2563EB;
+      --primary-hover: #1D4ED8;
+      --primary-light: #EFF6FF;
+      --text: #0F172A;
+      --muted: #64748B;
+      --border: #E2E8F0;
+      --ok: #16A34A;
+      --ok-bg: #F0FDF4;
+      --err: #DC2626;
+      --err-bg: #FEF2F2;
+      --shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 8px 24px rgba(15, 23, 42, 0.04);
+      --radius: 16px;
+      --radius-sm: 14px;
     }
     * { box-sizing: border-box; }
+    [hidden] { display: none !important; }
+    html, body { margin: 0; }
     body {
-      margin: 0;
+      min-height: 100vh;
       font: 16px/1.5 ui-sans-serif, system-ui, Segoe UI, sans-serif;
-      background: radial-gradient(1200px 600px at 10% -10%, #1b2a55 0%, transparent 50%), var(--bg);
+      background: var(--bg);
       color: var(--text);
     }
-    main { max-width: 880px; margin: 0 auto; padding: 40px 20px 64px; }
-    h1 { font-size: 2rem; letter-spacing: -0.03em; margin: 0 0 8px; }
-    p { color: var(--muted); margin: 0 0 16px; }
-    .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin: 18px 0 28px; }
-    .pill {
-      display: inline-flex; align-items: center; gap: 8px;
-      border: 1px solid var(--line); background: var(--panel);
-      border-radius: 999px; padding: 6px 12px; font-size: 13px;
+    a { color: var(--primary); text-decoration: none; }
+    a:hover { color: var(--primary-hover); }
+    button, input, select { font: inherit; }
+    :focus-visible {
+      outline: 2px solid var(--primary);
+      outline-offset: 2px;
     }
-    .dot { width: 8px; height: 8px; border-radius: 50%; background: #667; }
-    .dot.ok { background: var(--ok); }
-    .dot.bad { background: var(--bad); }
-    a { color: var(--accent); }
-    .grid { display: grid; gap: 16px; }
-    @media (min-width: 740px) { .grid { grid-template-columns: 1fr 1fr; } }
-    section {
-      background: var(--panel); border: 1px solid var(--line);
-      border-radius: 16px; padding: 18px;
+    .wrap { max-width: 1120px; margin: 0 auto; padding: 0 20px 48px; }
+    .header {
+      background: var(--card);
+      border-bottom: 1px solid var(--border);
     }
-    h2 { margin: 0 0 10px; font-size: 1.05rem; }
-    code, pre {
+    .header-inner {
+      max-width: 1120px;
+      margin: 0 auto;
+      padding: 14px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      color: inherit;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+    .brand-mark {
+      width: 34px;
+      height: 34px;
+      border-radius: 10px;
+      background: var(--primary-light);
+      color: var(--primary);
+      display: grid;
+      place-items: center;
+      flex: 0 0 auto;
+    }
+    .nav {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+    .nav a {
+      color: var(--muted);
+      font-size: 14px;
+      font-weight: 600;
+    }
+    .nav a:hover { color: var(--text); }
+    .ver {
+      display: inline-flex;
+      align-items: center;
+      border-radius: 999px;
+      padding: 4px 10px;
+      background: var(--primary-light);
+      color: var(--primary);
+      font-size: 12px;
+      font-weight: 700;
+    }
+    .hero {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 28px 0 22px;
+    }
+    .hero h1 {
+      margin: 0 0 8px;
+      font-size: clamp(1.45rem, 3vw, 2rem);
+      letter-spacing: -0.03em;
+      line-height: 1.2;
+    }
+    .hero p { margin: 0; color: var(--muted); max-width: 38rem; }
+    .status {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      border-radius: 999px;
+      padding: 7px 12px;
+      background: #F1F5F9;
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 700;
+      white-space: nowrap;
+      flex: 0 0 auto;
+    }
+    .status.ok { background: var(--ok-bg); color: var(--ok); }
+    .status.bad { background: var(--err-bg); color: var(--err); }
+    .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: currentColor;
+    }
+    .workspace {
+      display: grid;
+      gap: 18px;
+    }
+    @media (min-width: 900px) {
+      .workspace { grid-template-columns: 1.05fr 0.95fr; }
+    }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 20px;
+    }
+    .card h2 {
+      margin: 0 0 16px;
+      font-size: 1.05rem;
+      letter-spacing: -0.02em;
+    }
+    .label {
+      display: block;
+      margin: 0 0 6px;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text);
+    }
+    .field { position: relative; }
+    .field input[type="password"],
+    .field input[type="text"] {
+      width: 100%;
+      border: 1px solid var(--border);
+      background: #fff;
+      border-radius: var(--radius-sm);
+      padding: 11px 44px 11px 12px;
+      color: var(--text);
+    }
+    .field input:focus {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+      outline: none;
+    }
+    .icon-btn {
+      border: 0;
+      background: transparent;
+      color: var(--muted);
+      padding: 6px;
+      border-radius: 8px;
+      cursor: pointer;
+      display: inline-grid;
+      place-items: center;
+    }
+    .icon-btn:hover { color: var(--text); background: #F8FAFC; }
+    .toggle-key {
+      position: absolute;
+      right: 8px;
+      top: 50%;
+      transform: translateY(-50%);
+    }
+    .hint { margin: 6px 0 0; font-size: 13px; color: var(--muted); }
+    .hint.err { color: var(--err); }
+    .drop {
+      margin-top: 16px;
+      border: 1.5px dashed #93C5FD;
+      background: var(--primary-light);
+      border-radius: var(--radius);
+      min-height: 168px;
+      padding: 22px 16px;
+      display: grid;
+      place-items: center;
+      text-align: center;
+      cursor: pointer;
+      color: var(--primary);
+    }
+    .drop:hover, .drop.drag { background: #DBEAFE; border-color: var(--primary); }
+    .drop strong { display: block; color: var(--text); margin: 8px 0 2px; }
+    .drop span { color: var(--muted); font-size: 13px; }
+    .file-row {
+      margin-top: 12px;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 10px 12px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .thumb {
+      width: 42px;
+      height: 42px;
+      border-radius: 8px;
+      object-fit: cover;
+      background: #F1F5F9;
+      flex: 0 0 auto;
+    }
+    .file-meta { min-width: 0; flex: 1; }
+    .file-meta b, .file-meta small { display: block; }
+    .file-meta b {
+      font-size: 13px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .file-meta small { color: var(--muted); font-size: 12px; }
+    .controls {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin-top: 14px;
+    }
+    select {
+      width: 100%;
+      border: 1px solid var(--border);
+      background: #fff;
+      border-radius: 12px;
+      padding: 10px 12px;
+      color: var(--text);
+    }
+    .primary {
+      width: 100%;
+      margin-top: 16px;
+      border: 0;
+      border-radius: 12px;
+      padding: 12px 16px;
+      background: var(--primary);
+      color: #fff;
+      font-weight: 700;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+    .primary:hover { background: var(--primary-hover); }
+    .primary:disabled { opacity: 0.55; cursor: wait; }
+    .endpoint {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 10px 12px;
+      background: #F8FAFC;
+    }
+    .method {
+      display: inline-flex;
+      align-items: center;
+      border-radius: 999px;
+      padding: 3px 8px;
+      background: var(--ok-bg);
+      color: var(--ok);
+      font-size: 11px;
+      font-weight: 800;
+    }
+    .endpoint code {
+      flex: 1;
+      min-width: 0;
+      overflow: auto;
+      font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+      font-size: 13px;
+    }
+    .code {
+      position: relative;
+      margin-top: 14px;
+      background: #0F172A;
+      color: #E2E8F0;
+      border-radius: 14px;
+      padding: 16px 44px 16px 16px;
+      overflow: auto;
+    }
+    .code pre {
+      margin: 0;
       font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
       font-size: 12.5px;
+      line-height: 1.6;
+      white-space: pre;
     }
-    pre {
-      margin: 0; overflow: auto; background: #0d1324; border-radius: 10px;
-      padding: 12px; color: #d7e3ff;
+    .code .kw { color: #93C5FD; }
+    .code .flag { color: #FCA5A5; }
+    .code .str { color: #86EFAC; }
+    .copy-abs {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      color: #CBD5E1;
     }
-    label { display: block; font-size: 13px; color: var(--muted); margin: 10px 0 6px; }
-    input[type="text"], input[type="file"] {
-      width: 100%; color: var(--text);
+    .copy-abs:hover { background: #1E293B; color: #fff; }
+    .note { margin: 12px 0 0; font-size: 13px; color: var(--muted); }
+    .facts {
+      display: grid;
+      gap: 12px;
+      margin-top: 16px;
     }
-    input[type="text"] {
-      border: 1px solid var(--line); background: #0d1324; border-radius: 10px;
+    .fact {
+      display: flex;
+      gap: 10px;
+      align-items: flex-start;
+    }
+    .fact-ico {
+      width: 32px;
+      height: 32px;
+      border-radius: 10px;
+      background: var(--primary-light);
+      color: var(--primary);
+      display: grid;
+      place-items: center;
+      flex: 0 0 auto;
+    }
+    .fact b { display: block; font-size: 13px; }
+    .fact small { color: var(--muted); font-size: 12px; }
+    .preview-card { margin-top: 18px; }
+    .preview-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 14px;
+    }
+    .preview-head h2 { margin: 0; }
+    .preview-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+    .ghost, .linkish {
+      border: 0;
+      background: transparent;
+      cursor: pointer;
+      font-weight: 700;
+      font-size: 14px;
+      padding: 8px 10px;
+      border-radius: 10px;
+    }
+    .ghost { color: var(--primary); }
+    .ghost:hover { background: var(--primary-light); }
+    .linkish { color: var(--text); }
+    .linkish:hover { background: #F1F5F9; }
+    .ghost:disabled, .linkish:disabled { opacity: 0.4; cursor: not-allowed; }
+    .preview-grid {
+      display: grid;
+      gap: 14px;
+    }
+    @media (min-width: 740px) {
+      .preview-grid { grid-template-columns: 1fr 1fr; }
+    }
+    .pane h3 {
+      margin: 0 0 8px;
+      font-size: 13px;
+      color: var(--muted);
+      font-weight: 700;
+    }
+    .frame {
+      min-height: 240px;
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      overflow: hidden;
+      display: grid;
+      place-items: center;
+      background: #F8FAFC;
+    }
+    .frame.checker {
+      background: repeating-conic-gradient(#E2E8F0 0% 25%, #F8FAFC 0% 50%) 50% / 16px 16px;
+    }
+    .frame img { max-width: 100%; max-height: 360px; display: block; }
+    .empty {
+      text-align: center;
+      color: var(--muted);
+      padding: 28px 16px;
+    }
+    .empty svg { color: #94A3B8; }
+    .empty p { margin: 8px 0 0; font-size: 13px; }
+    .banner {
+      margin-top: 12px;
+      border-radius: 12px;
       padding: 10px 12px;
+      font-size: 13px;
     }
-    button {
-      margin-top: 14px; border: 0; border-radius: 10px; padding: 10px 14px;
-      background: var(--accent); color: #071018; font-weight: 650; cursor: pointer;
+    .banner.err { background: var(--err-bg); color: var(--err); }
+    .banner.ok { background: var(--ok-bg); color: var(--ok); }
+    .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0); }
+    @media (max-width: 720px) {
+      .header-inner { flex-wrap: wrap; }
+      .hero { flex-direction: column; }
+      .controls { grid-template-columns: 1fr; }
+      .preview-head { flex-direction: column; align-items: flex-start; }
+      .preview-actions, .primary { width: 100%; }
+      .preview-actions .ghost, .preview-actions .linkish { flex: 1; }
     }
-    button:disabled { opacity: 0.55; cursor: wait; }
-    .preview {
-      margin-top: 14px; min-height: 160px; border-radius: 12px;
-      background: repeating-conic-gradient(#2b3348 0% 25%, #1b2133 0% 50%) 50% / 18px 18px;
-      display: grid; place-items: center; overflow: hidden;
-    }
-    .preview img { max-width: 100%; max-height: 320px; display: block; }
-    .err { color: var(--bad); font-size: 13px; margin-top: 10px; }
-    .meta { font-size: 12px; color: var(--muted); margin-top: 8px; }
   </style>
 </head>
 <body>
-  <main>
-    <h1>${APP_NAME}</h1>
-    <p>Local BiRefNet cutouts. Send <code>x-api-key</code> on every processing request. v${APP_VERSION}</p>
-    <div class="row">
-      <span class="pill"><span id="dot" class="dot"></span><span id="status">Checking…</span></span>
-      <a class="pill" href="${docsUrl}">OpenAPI docs</a>
-      <a class="pill" href="${readyUrl}">Readiness</a>
+  <header class="header">
+    <div class="header-inner">
+      <a class="brand" href="/">
+        <span class="brand-mark" aria-hidden="true">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+            <path d="M12 2.6 20.4 7.4v9.2L12 21.4 3.6 16.6V7.4L12 2.6Z" stroke="currentColor" stroke-width="1.8"/>
+            <path d="M8 12.2 12 8.4l4 3.8-4 3.8-4-3.8Z" fill="currentColor"/>
+          </svg>
+        </span>
+        ${APP_NAME}
+      </a>
+      <nav class="nav">
+        <a href="${docsUrl}">API Docs</a>
+        <a href="${readyUrl}">Status</a>
+        <span class="ver">v${APP_VERSION}</span>
+      </nav>
     </div>
-    <div class="grid">
-      <section>
-        <h2>Call the API</h2>
-        <pre>curl -X POST ${removeUrl} \\
-  -H "x-api-key: $API_KEY" \\
-  -F image=@photo.jpg \\
-  -F format=png \\
-  -F quality=hd \\
-  -F responseMode=json</pre>
-        <p class="meta">Health checks stay public. <code>POST ${removeUrl}</code> requires the key from <code>API_KEY</code>.</p>
+  </header>
+
+  <main class="wrap">
+    <section class="hero">
+      <div>
+        <h1>Remove backgrounds with one API call</h1>
+        <p>Send an image and get a clean cutout with a transparent background.</p>
+      </div>
+      <div id="status" class="status">
+        <span id="dot" class="dot"></span>
+        <span id="status-text">Checking…</span>
+      </div>
+    </section>
+
+    <div class="workspace">
+      <section class="card">
+        <h2>Try the API</h2>
+        <label class="label" for="key">x-api-key</label>
+        <div class="field">
+          <input id="key" type="password" autocomplete="off" spellcheck="false" placeholder="Paste API_KEY from your .env" />
+          <button id="toggle-key" class="icon-btn toggle-key" type="button" aria-label="Show API key">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+              <path d="M2.4 12S6 6.5 12 6.5 21.6 12 21.6 12 18 17.5 12 17.5 2.4 12 2.4 12Z" stroke="currentColor" stroke-width="1.7"/>
+              <circle cx="12" cy="12" r="2.6" stroke="currentColor" stroke-width="1.7"/>
+            </svg>
+          </button>
+        </div>
+        <p id="key-err" class="hint" hidden></p>
+
+        <label class="drop" id="drop" for="file">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none">
+            <path d="M12 16V5M12 5l-3.4 3.4M12 5l3.4 3.4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+            <path d="M5 16.5V18a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-1.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+          </svg>
+          <strong>Drag &amp; drop an image here</strong>
+          <span>or click to browse</span>
+          <span>PNG, JPG, WEBP up to ${maxMb} MB</span>
+        </label>
+        <input id="file" class="sr" type="file" accept="image/jpeg,image/png,image/webp" />
+
+        <div id="file-row" class="file-row" hidden>
+          <img id="file-thumb" class="thumb" alt="" />
+          <div class="file-meta">
+            <b id="file-name"></b>
+            <small id="file-size"></small>
+          </div>
+          <button id="clear-file" class="icon-btn" type="button" aria-label="Remove file">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+              <path d="M6 6l12 12M18 6 6 18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+            </svg>
+          </button>
+        </div>
+
+        <div class="controls">
+          <div>
+            <label class="label" for="quality">Quality</label>
+            <select id="quality">
+              <option value="hd" selected>HD (High)</option>
+              <option value="fast">Fast</option>
+            </select>
+          </div>
+          <div>
+            <label class="label" for="format">Output format</label>
+            <select id="format">
+              <option value="png" selected>PNG</option>
+              <option value="webp">WEBP</option>
+            </select>
+          </div>
+        </div>
+
+        <button id="run" class="primary" type="button">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+            <path d="M4 12 20 5l-6.2 14L11 13 4 12Z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/>
+          </svg>
+          Remove Background
+        </button>
       </section>
-      <section>
-        <h2>Try a cutout</h2>
-        <label for="key">x-api-key</label>
-        <input id="key" type="text" autocomplete="off" spellcheck="false" placeholder="Paste API_KEY from your .env" />
-        <label for="file">Image</label>
-        <input id="file" type="file" accept="image/jpeg,image/png,image/webp" />
-        <button id="run" type="button">Remove background</button>
-        <div id="err" class="err" hidden></div>
-        <div class="preview"><img id="out" alt="" hidden /></div>
-        <div id="meta" class="meta"></div>
+
+      <section class="card">
+        <h2>Quick Integration</h2>
+        <p class="label">Endpoint</p>
+        <div class="endpoint">
+          <span class="method">POST</span>
+          <code>${removeUrl}</code>
+          <button id="copy-endpoint" class="icon-btn" type="button" aria-label="Copy endpoint">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+              <rect x="8" y="8" width="11" height="11" rx="2" stroke="currentColor" stroke-width="1.7"/>
+              <path d="M5 15.2V6.8A1.8 1.8 0 0 1 6.8 5H15" stroke="currentColor" stroke-width="1.7"/>
+            </svg>
+          </button>
+        </div>
+        <div class="code">
+          <button id="copy-curl" class="icon-btn copy-abs" type="button" aria-label="Copy cURL">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+              <rect x="8" y="8" width="11" height="11" rx="2" stroke="currentColor" stroke-width="1.7"/>
+              <path d="M5 15.2V6.8A1.8 1.8 0 0 1 6.8 5H15" stroke="currentColor" stroke-width="1.7"/>
+            </svg>
+          </button>
+          <pre><span class="kw">curl</span> <span class="flag">-X</span> <span class="str">POST</span> ${removeUrl} \\
+  <span class="flag">-H</span> <span class="str">"x-api-key: $API_KEY"</span> \\
+  <span class="flag">-F</span> image=@photo.jpg \\
+  <span class="flag">-F</span> format=png \\
+  <span class="flag">-F</span> quality=hd \\
+  <span class="flag">-F</span> responseMode=json</pre>
+        </div>
+        <p class="note">Health checks stay public. <code>POST ${removeUrl}</code> requires the key from <code>API_KEY</code>.</p>
+        <div class="facts">
+          <div class="fact">
+            <span class="fact-ico" aria-hidden="true">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                <rect x="4" y="5" width="16" height="14" rx="2" stroke="currentColor" stroke-width="1.7"/>
+                <path d="m8 14 2.4-2.6L13 14l3-3.4" stroke="currentColor" stroke-width="1.7"/>
+              </svg>
+            </span>
+            <div><b>PNG, JPG, WEBP</b><small>Supported formats</small></div>
+          </div>
+          <div class="fact">
+            <span class="fact-ico" aria-hidden="true">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                <path d="M7 17h10M8.5 17 7 7h10l-1.5 10H8.5Z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/>
+              </svg>
+            </span>
+            <div><b>Up to ${maxMb} MB</b><small>Maximum file size</small></div>
+          </div>
+          <div class="fact">
+            <span class="fact-ico" aria-hidden="true">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                <path d="m12 4 1.8 5.4H20l-5 3.6 1.9 5.5L12 15.8 7.1 18.5 9 13 4 9.4h6.2L12 4Z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/>
+              </svg>
+            </span>
+            <div><b>HD output</b><small>High-quality results</small></div>
+          </div>
+        </div>
       </section>
     </div>
+
+    <section class="card preview-card">
+      <div class="preview-head">
+        <h2>Preview</h2>
+        <div class="preview-actions">
+          <button id="download" class="ghost" type="button" disabled>Download PNG</button>
+          <button id="reset" class="linkish" type="button">Reset</button>
+        </div>
+      </div>
+      <div class="preview-grid">
+        <div class="pane">
+          <h3>Original</h3>
+          <div class="frame">
+            <img id="original" alt="Original image" hidden />
+            <div id="original-empty" class="empty">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none">
+                <rect x="4" y="5" width="16" height="14" rx="2" stroke="currentColor" stroke-width="1.7"/>
+                <circle cx="9" cy="10" r="1.4" fill="currentColor"/>
+                <path d="m8 16 3-3.2 2 2.1 3-3.4 2 4.5H8Z" fill="currentColor"/>
+              </svg>
+              <p>Upload an image to see the original here.</p>
+            </div>
+          </div>
+        </div>
+        <div class="pane">
+          <h3>Background Removed</h3>
+          <div class="frame checker">
+            <img id="out" alt="Background removed" hidden />
+            <div id="result-empty" class="empty">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none">
+                <path d="M5 16V8a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v8" stroke="currentColor" stroke-width="1.7"/>
+                <path d="M8 19h8" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>
+              </svg>
+              <p>The transparent cutout will appear here.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div id="err" class="banner err" hidden></div>
+      <div id="meta" class="banner ok" hidden></div>
+    </section>
   </main>
+
   <script>
     const healthUrl = ${JSON.stringify(healthUrl)};
     const removeUrl = ${JSON.stringify(removeUrl)};
+    const curlCommand = ${JSON.stringify(curlCommand)};
     const statusEl = document.getElementById('status');
-    const dotEl = document.getElementById('dot');
+    const statusText = document.getElementById('status-text');
     fetch(healthUrl).then((r) => r.ok ? r.json() : Promise.reject()).then(() => {
-      statusEl.textContent = 'API online';
-      dotEl.className = 'dot ok';
+      statusText.textContent = 'API Online';
+      statusEl.className = 'status ok';
     }).catch(() => {
-      statusEl.textContent = 'API offline';
-      dotEl.className = 'dot bad';
+      statusText.textContent = 'API Offline';
+      statusEl.className = 'status bad';
     });
 
     const keyInput = document.getElementById('key');
+    const keyErr = document.getElementById('key-err');
+    const fileInput = document.getElementById('file');
+    const drop = document.getElementById('drop');
+    const fileRow = document.getElementById('file-row');
+    const fileThumb = document.getElementById('file-thumb');
+    const original = document.getElementById('original');
+    const originalEmpty = document.getElementById('original-empty');
+    const resultEmpty = document.getElementById('result-empty');
+    const downloadBtn = document.getElementById('download');
+    const qualityInput = document.getElementById('quality');
+    const formatInput = document.getElementById('format');
     keyInput.value = sessionStorage.getItem('bg-api-key') || '';
+
+    document.getElementById('toggle-key').addEventListener('click', () => {
+      const hidden = keyInput.type === 'password';
+      keyInput.type = hidden ? 'text' : 'password';
+      document.getElementById('toggle-key').setAttribute('aria-label', hidden ? 'Hide API key' : 'Show API key');
+    });
+
+    function formatSize(bytes) {
+      if (bytes < 1024) return bytes + ' B';
+      if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(2) + ' KB';
+      return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
+    }
+
+    function showFile(file) {
+      const url = URL.createObjectURL(file);
+      fileThumb.src = url;
+      original.src = url;
+      original.hidden = false;
+      originalEmpty.hidden = true;
+      document.getElementById('file-name').textContent = file.name;
+      document.getElementById('file-size').textContent = formatSize(file.size);
+      fileRow.hidden = false;
+    }
+
+    function clearFile() {
+      fileInput.value = '';
+      fileRow.hidden = true;
+      original.hidden = true;
+      originalEmpty.hidden = false;
+      original.removeAttribute('src');
+      fileThumb.removeAttribute('src');
+    }
+
+    fileInput.addEventListener('change', () => {
+      const file = fileInput.files[0];
+      if (file) showFile(file);
+    });
+    document.getElementById('clear-file').addEventListener('click', (event) => {
+      event.preventDefault();
+      clearFile();
+    });
+    ;['dragenter', 'dragover'].forEach((type) => {
+      drop.addEventListener(type, (event) => {
+        event.preventDefault();
+        drop.classList.add('drag');
+      });
+    });
+    ;['dragleave', 'drop'].forEach((type) => {
+      drop.addEventListener(type, (event) => {
+        event.preventDefault();
+        drop.classList.remove('drag');
+      });
+    });
+    drop.addEventListener('drop', (event) => {
+      const file = event.dataTransfer && event.dataTransfer.files[0];
+      if (!file) return;
+      const transfer = new DataTransfer();
+      transfer.items.add(file);
+      fileInput.files = transfer.files;
+      showFile(file);
+    });
+
+    async function copyText(value) {
+      await navigator.clipboard.writeText(value);
+    }
+    document.getElementById('copy-endpoint').addEventListener('click', () => copyText(removeUrl));
+    document.getElementById('copy-curl').addEventListener('click', () => copyText(curlCommand));
+
+    document.getElementById('reset').addEventListener('click', () => {
+      clearFile();
+      const img = document.getElementById('out');
+      img.hidden = true;
+      img.removeAttribute('src');
+      resultEmpty.hidden = false;
+      downloadBtn.disabled = true;
+      document.getElementById('err').hidden = true;
+      document.getElementById('meta').hidden = true;
+      keyErr.hidden = true;
+    });
+
+    downloadBtn.addEventListener('click', () => {
+      const img = document.getElementById('out');
+      if (!img.src) return;
+      const link = document.createElement('a');
+      link.href = img.src;
+      link.download = 'background-removed.' + (formatInput.value || 'png');
+      link.click();
+    });
+
     document.getElementById('run').addEventListener('click', async () => {
-      const file = document.getElementById('file').files[0];
+      const file = fileInput.files[0];
       const key = keyInput.value.trim();
       const err = document.getElementById('err');
       const img = document.getElementById('out');
       const meta = document.getElementById('meta');
       const btn = document.getElementById('run');
       err.hidden = true;
-      img.hidden = true;
-      meta.textContent = '';
-      if (!key) { err.textContent = 'Paste your x-api-key first.'; err.hidden = false; return; }
+      meta.hidden = true;
+      keyErr.hidden = true;
+      if (!key) {
+        keyErr.textContent = 'Enter a valid API key.';
+        keyErr.hidden = false;
+        keyErr.className = 'hint err';
+        return;
+      }
       if (!file) { err.textContent = 'Choose an image.'; err.hidden = false; return; }
       sessionStorage.setItem('bg-api-key', key);
       const body = new FormData();
       body.set('image', file);
-      body.set('format', 'png');
-      body.set('quality', 'hd');
+      body.set('format', formatInput.value || 'png');
+      body.set('quality', qualityInput.value || 'hd');
       body.set('responseMode', 'binary');
       btn.disabled = true;
+      resultEmpty.querySelector('p').textContent = 'Processing image…';
+      resultEmpty.hidden = false;
+      img.hidden = true;
       const started = Date.now();
       try {
         const response = await fetch(removeUrl, { method: 'POST', headers: { 'x-api-key': key }, body });
@@ -161,8 +777,13 @@ export function renderIndexPage(env: Env): string {
         const blob = await response.blob();
         img.src = URL.createObjectURL(blob);
         img.hidden = false;
+        resultEmpty.hidden = true;
+        downloadBtn.disabled = false;
         meta.textContent = ((Date.now() - started) / 1000).toFixed(1) + 's · ' + (response.headers.get('x-image-id') || 'done');
+        meta.hidden = false;
       } catch (error) {
+        resultEmpty.querySelector('p').textContent = 'The transparent cutout will appear here.';
+        resultEmpty.hidden = false;
         err.textContent = error instanceof Error ? error.message : 'Request failed';
         err.hidden = false;
       } finally {
