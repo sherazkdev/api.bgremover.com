@@ -11,6 +11,10 @@ describe('GET /', () => {
       expect(response.headers['content-type']).toMatch(/text\/html/);
       expect(response.body).toContain('x-api-key');
       expect(response.body).toContain('/api/v1/remove-background');
+      expect(response.headers['strict-transport-security']).toBeUndefined();
+      expect(String(response.headers['content-security-policy'] ?? '')).not.toMatch(
+        /upgrade-insecure-requests/i,
+      );
     } finally {
       await cleanup();
     }
