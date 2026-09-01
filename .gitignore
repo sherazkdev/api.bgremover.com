@@ -1,0 +1,15 @@
+node_modules
+dist
+coverage
+.env
+.cache
+*.log
+public/uploads/originals/**
+public/uploads/processed/**
+!public/uploads/originals/.gitkeep
+!public/uploads/processed/.gitkeep
+debug-model-mask.png
+debug-resized-mask.png
+debug-result-on-magenta.png
+.DS_Store
+Thumbs.db
