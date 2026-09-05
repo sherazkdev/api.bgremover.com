@@ -6,8 +6,11 @@ coverage
 *.log
 public/uploads/originals/**
 public/uploads/processed/**
+public/uploads/archives/**
+public/uploads/poster-preview*.png
 !public/uploads/originals/.gitkeep
 !public/uploads/processed/.gitkeep
+!public/uploads/archives/.gitkeep
 debug-model-mask.png
 debug-resized-mask.png
 debug-result-on-magenta.png

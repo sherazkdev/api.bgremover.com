@@ -1,0 +1,14 @@
+{
+  "id": "poster-001",
+  "original": "labels/poster-001/original.png",
+  "masks": {
+    "subject": "labels/poster-001/subject.png",
+    "text": "labels/poster-001/text.png",
+    "text_container": "labels/poster-001/text_container.png",
+    "logo_overlay": "labels/poster-001/logo_overlay.png",
+    "final": "labels/poster-001/final.png"
+  },
+  "languages": ["urdu", "english"],
+  "mode": "graphic",
+  "notes": "Keep date badges, logos, and caption cards. Only the cream page background may become transparent."
+}

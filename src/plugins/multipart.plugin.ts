@@ -7,10 +7,10 @@ export async function registerMultipart(app: FastifyInstance, env: Env): Promise
   await app.register(multipart, {
     attachFieldsToBody: false,
     limits: {
-      files: 2,
+      files: env.MAX_BULK_IMAGES + 1,
       fileSize: env.MAX_FILE_SIZE_MB * 1024 * 1024,
-      fields: 8,
-      parts: 10,
+      fields: 16,
+      parts: env.MAX_BULK_IMAGES + 16,
       headerPairs: 50,
     },
     throwFileSizeLimit: true,

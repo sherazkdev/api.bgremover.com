@@ -21,6 +21,7 @@ export class LocalStorageService implements StorageService {
     try {
       await mkdir(path.join(this.root, 'originals'), { recursive: true });
       await mkdir(path.join(this.root, 'processed'), { recursive: true });
+      await mkdir(path.join(this.root, 'archives'), { recursive: true });
       await access(this.root);
       return true;
     } catch {

@@ -11,6 +11,7 @@ const envSchema = z.object({
   PUBLIC_BASE_URL: z.string().url().default('http://localhost:3000'),
   UPLOAD_ROOT: z.string().min(1).default('public/uploads'),
   MAX_FILE_SIZE_MB: z.coerce.number().positive().max(100).default(10),
+  MAX_BULK_IMAGES: z.coerce.number().int().min(1).max(30).default(8),
   MAX_IMAGE_WIDTH: z.coerce.number().int().positive().default(6000),
   MAX_IMAGE_HEIGHT: z.coerce.number().int().positive().default(6000),
   MAX_IMAGE_PIXELS: z.coerce.number().int().positive().default(25_000_000),

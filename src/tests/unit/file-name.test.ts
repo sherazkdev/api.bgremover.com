@@ -30,6 +30,9 @@ describe('file-name utilities', () => {
       date,
     );
     expect(relative).toBe('originals/2026/09/550e8400-e29b-41d4-a716-446655440000.jpg');
+    expect(buildDatedRelativePath('archives', '550e8400-e29b-41d4-a716-446655440000', 'zip', date)).toBe(
+      'archives/2026/09/550e8400-e29b-41d4-a716-446655440000.zip',
+    );
   });
 
   it('strips client path segments from the id', () => {

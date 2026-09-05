@@ -41,6 +41,15 @@ export class AsyncQueue {
     this.maxQueueSize = options.maxQueueSize;
   }
 
+  public canAccept(count = 1): boolean {
+    if (count < 1) {
+      return false;
+    }
+    const freeActive = Math.max(0, this.concurrency - this.activeCount);
+    const freeQueue = Math.max(0, this.maxQueueSize - this.waiting.length);
+    return count <= freeActive + freeQueue;
+  }
+
   public get stats(): AsyncQueueStats {
     return {
       active: this.activeCount,

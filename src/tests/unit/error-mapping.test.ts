@@ -19,6 +19,12 @@ describe('error mapping', () => {
     expect(mapped.statusCode).toBe(413);
   });
 
+  it('maps Fastify file-count errors to the bulk image cap', () => {
+    const mapped = mapUnknownError({ code: 'FST_FILES_LIMIT', statusCode: 413 }, env);
+    expect(mapped.code).toBe('TOO_MANY_IMAGES');
+    expect(mapped.statusCode).toBe(400);
+  });
+
   it('maps rate-limit errors', () => {
     const mapped = mapUnknownError({ code: 'FST_ERR_RATE_LIMIT', statusCode: 429 }, env);
     expect(mapped.code).toBe('RATE_LIMIT_EXCEEDED');

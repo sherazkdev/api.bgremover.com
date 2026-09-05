@@ -1,10 +1,6 @@
 import Fastify, { type FastifyInstance } from 'fastify';
 
-import {
-  BODY_LIMIT_BYTES,
-  REQUEST_TIMEOUT_MS,
-  SENSITIVE_HEADER_NAMES,
-} from './config/constants.js';
+import { bodyLimitBytes, requestTimeoutMs, SENSITIVE_HEADER_NAMES } from './config/constants.js';
 import { loadEnv, type Env } from './config/env.js';
 import { BiRefNetProvider } from './infrastructure/ai/birefnet.provider.js';
 import { InferenceWorker } from './infrastructure/ai/inference-worker.js';
@@ -95,8 +91,8 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
 
   const app = Fastify({
     logger: options.logger ?? buildLoggerOptions(env),
-    requestTimeout: REQUEST_TIMEOUT_MS,
-    bodyLimit: BODY_LIMIT_BYTES,
+    requestTimeout: requestTimeoutMs(env.MAX_BULK_IMAGES),
+    bodyLimit: bodyLimitBytes(env.MAX_FILE_SIZE_MB, env.MAX_BULK_IMAGES),
     trustProxy: true,
     genReqId: (request) => {
       const header = request.headers['x-request-id'];

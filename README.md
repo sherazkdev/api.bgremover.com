@@ -42,6 +42,7 @@ Copy `.env.example` and adjust as needed. Values are validated with Zod at start
 | `PUBLIC_BASE_URL`        | `http://localhost:3000`             | Public URL used in JSON responses       |
 | `UPLOAD_ROOT`            | `public/uploads`                    | Local originals and processed files     |
 | `MAX_FILE_SIZE_MB`       | `10`                                | Multipart and validator size limit      |
+| `MAX_BULK_IMAGES`        | `8`                                 | Max images per bulk request             |
 | `MAX_IMAGE_WIDTH`        | `6000`                              | Maximum width in pixels                 |
 | `MAX_IMAGE_HEIGHT`       | `6000`                              | Maximum height in pixels                |
 | `MAX_IMAGE_PIXELS`       | `25000000`                          | Maximum `width * height`                |
@@ -73,6 +74,15 @@ http://localhost:3000/uploads/processed/2026/09/<uuid>.png
 
 ## Endpoints
 
+OpenAPI UI: [http://localhost:3000/docs](http://localhost:3000/docs)
+
+| Method | Path | Auth | Result |
+| --- | --- | --- | --- |
+| `GET` | `/api/v1/health` | Public | Process is up |
+| `GET` | `/api/v1/health/ready` | Public | Model and disk are ready |
+| `POST` | `/api/v1/remove-background` | `x-api-key` | One transparent image |
+| `POST` | `/api/v1/remove-backgrounds` | `x-api-key` | 1–8 images, per-item status, ZIP |
+
 ### `GET /api/v1/health`
 
 Liveness. Public. Returns `200` while the HTTP process is running.
@@ -85,12 +95,14 @@ Readiness. Public. Returns `200` only when the model is loaded and the upload di
 
 Requires header `x-api-key`. `multipart/form-data` with a single image.
 
-| Field          | Required | Values           | Default |
-| -------------- | -------: | ---------------- | ------- |
-| `image`        |      yes | JPEG, PNG, WebP  | —       |
-| `format`       |       no | `png`, `webp`    | `png`   |
-| `quality`      |       no | `fast`, `hd`     | `hd`    |
-| `responseMode` |       no | `json`, `binary` | `json`  |
+| Field           | Required | Values                                      | Default |
+| --------------- | -------: | ------------------------------------------- | ------- |
+| `image`         |      yes | JPEG, PNG, WebP                             | —       |
+| `format`        |       no | `png`, `webp`                               | `png`   |
+| `quality`       |       no | `fast`, `hd`                                | `hd`    |
+| `responseMode`  |       no | `json`, `binary`                            | `json`  |
+| `mode`          |       no | `auto`, `person`, `product`, `document`, `graphic` | `auto` |
+| `preserveText`  |       no | `true`, `false`                             | `true`  |
 
 `quality=fast` uses the model’s normal input path. `quality=hd` uses higher-quality Sharp resampling for the model input and alpha mask. It does not upscale the final image.
 
@@ -102,6 +114,8 @@ curl -X POST http://localhost:3000/api/v1/remove-background \
   -F image=@./photo.jpg \
   -F format=png \
   -F quality=hd \
+  -F mode=auto \
+  -F preserveText=true \
   -F responseMode=json
 ```
 
@@ -116,6 +130,38 @@ curl -X POST http://localhost:3000/api/v1/remove-background \
 ```
 
 Binary responses include `X-Request-Id`, `X-Image-Id`, `X-Processing-Duration-Ms`, and `X-Result-Url`.
+
+### `POST /api/v1/remove-backgrounds`
+
+Requires header `x-api-key`. `multipart/form-data` with one or more images. Each image uses the same BiRefNet + text-preservation path as the single-image endpoint. One failed file does not cancel the rest. A ZIP is included when at least one image succeeds.
+
+| Field          | Required | Values                                      | Default |
+| -------------- | -------: | ------------------------------------------- | ------- |
+| `images`       |      yes | JPEG, PNG, WebP                             | —       |
+| `format`       |       no | `png`, `webp`                               | `png`   |
+| `quality`      |       no | `fast`, `hd`                                | `hd`    |
+| `mode`         |       no | `auto`, `person`, `product`, `document`, `graphic` | `auto` |
+| `preserveText` |       no | `true`, `false`                             | `true`  |
+
+Repeat `images` (or `image`) once per file. Response is always JSON with public URLs, in upload order.
+
+```bash
+curl -X POST http://localhost:3000/api/v1/remove-backgrounds \
+  -H "x-api-key: $API_KEY" \
+  -F images=@./photo1.jpg \
+  -F images=@./photo2.png \
+  -F images=@./photo3.webp \
+  -F format=png \
+  -F quality=hd \
+  -F mode=auto \
+  -F preserveText=true
+```
+
+The JSON body includes `completed`, `failed`, per-item `status`, and `zip.url` for a Download All archive.
+
+`mode=auto` keeps people when BiRefNet is confident and falls back to graphic preservation for text-heavy posters. If neither a subject nor removable background can be found, the API returns `NO_REMOVABLE_SUBJECT` instead of a blank image.
+
+Fine-tuning notes live in [TRAINING.md](TRAINING.md).
 
 ## Testing
 

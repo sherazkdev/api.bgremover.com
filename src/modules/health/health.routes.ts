@@ -11,6 +11,7 @@ export function registerHealthRoutes(app: FastifyInstance, deps: HealthDependenc
     {
       schema: {
         tags: ['Health'],
+        operationId: 'healthLive',
         summary: 'Liveness check',
         description: 'Confirms that the HTTP application process is running. No API key required.',
         security: [],
@@ -27,6 +28,7 @@ export function registerHealthRoutes(app: FastifyInstance, deps: HealthDependenc
     {
       schema: {
         tags: ['Health'],
+        operationId: 'healthReady',
         summary: 'Readiness check',
         description:
           'Reports model state, queue depth, and upload directory availability. Returns 200 only when the API can process images. No API key required.',

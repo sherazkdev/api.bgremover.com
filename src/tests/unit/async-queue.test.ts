@@ -42,6 +42,28 @@ describe('AsyncQueue', () => {
     await expect(second).resolves.toBe('queued');
   });
 
+  it('reports whether another job can be accepted', async () => {
+    const queue = new AsyncQueue({ concurrency: 1, maxQueueSize: 1 });
+    expect(queue.canAccept(1)).toBe(true);
+    expect(queue.canAccept(2)).toBe(true);
+
+    let release: (() => void) | undefined;
+    const blocker = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const first = queue.add(() => blocker);
+    expect(queue.canAccept(1)).toBe(true);
+    expect(queue.canAccept(2)).toBe(false);
+
+    const second = queue.add(async () => 'queued');
+    expect(queue.canAccept(1)).toBe(false);
+
+    release?.();
+    await first;
+    await second;
+    expect(queue.canAccept(1)).toBe(true);
+  });
+
   it('does not stall after a failed job', async () => {
     const queue = new AsyncQueue({ concurrency: 1, maxQueueSize: 5 });
     await expect(

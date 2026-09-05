@@ -1,14 +1,23 @@
 import type { FastifyReply, FastifyRequest } from 'fastify';
 
-import { IMAGE_FIELD_NAME } from './background-removal.constants.js';
+import { IMAGE_FIELD_NAME, IMAGE_FIELD_NAMES } from './background-removal.constants.js';
 import {
   imageRequiredError,
+  imagesRequiredError,
   multipleImagesError,
+  tooManyImagesError,
   validationError,
 } from './background-removal.errors.js';
-import { removeBackgroundFieldsSchema } from './background-removal.schema.js';
+import {
+  removeBackgroundFieldsSchema,
+  removeBackgroundsFieldsSchema,
+} from './background-removal.schema.js';
 import type { BackgroundRemovalService } from './background-removal.service.js';
-import type { RemoveBackgroundOptions, UploadedImagePart } from './background-removal.types.js';
+import type {
+  RemoveBackgroundOptions,
+  RemoveBackgroundsOptions,
+  UploadedImagePart,
+} from './background-removal.types.js';
 import { contentDispositionForImage } from '../../shared/utils/image-response.js';
 
 interface MultipartFilePart {
@@ -129,5 +138,72 @@ export function createBackgroundRemovalController(service: BackgroundRemovalServ
     }
 
     return reply.status(200).send(service.toJsonResponse(result));
+  };
+}
+
+export async function parseRemoveBackgroundsRequest(
+  request: FastifyRequest,
+  maxImages: number,
+): Promise<{
+  uploads: UploadedImagePart[];
+  options: RemoveBackgroundsOptions;
+}> {
+  if (!isMultipartRequest(request) || !request.isMultipart()) {
+    throw validationError('Content-Type must be multipart/form-data');
+  }
+
+  const fields: Record<string, unknown> = {};
+  const uploads: UploadedImagePart[] = [];
+  let extraFiles = 0;
+
+  for await (const part of request.parts()) {
+    if (part.type === 'file') {
+      if (!IMAGE_FIELD_NAMES.has(part.fieldname)) {
+        await drainFile(part);
+        throw validationError(`Unexpected file field "${part.fieldname}"`);
+      }
+      if (uploads.length >= maxImages) {
+        extraFiles += 1;
+        await drainFile(part);
+        continue;
+      }
+      const buffer = await part.toBuffer();
+      uploads.push({
+        buffer,
+        filename: part.filename,
+        mimetype: part.mimetype,
+        fieldname: part.fieldname,
+      });
+    } else {
+      fields[part.fieldname] = part.value;
+    }
+  }
+
+  if (extraFiles > 0) {
+    throw tooManyImagesError(maxImages);
+  }
+  if (uploads.length === 0) {
+    throw imagesRequiredError();
+  }
+
+  const parsed = removeBackgroundsFieldsSchema.safeParse(fields);
+  if (!parsed.success) {
+    throw validationError('Invalid request fields', parsed.error.flatten());
+  }
+
+  return { uploads, options: parsed.data };
+}
+
+export function createBulkBackgroundRemovalController(service: BackgroundRemovalService) {
+  return async function removeBackgroundsHandler(
+    request: FastifyRequest,
+    reply: FastifyReply,
+  ): Promise<FastifyReply> {
+    const { uploads, options } = await parseRemoveBackgroundsRequest(
+      request,
+      request.server.env.MAX_BULK_IMAGES,
+    );
+    const result = await service.removeBackgrounds(uploads, options, request.log);
+    return reply.status(200).send(service.toBulkJsonResponse(result));
   };
 }

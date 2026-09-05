@@ -1,6 +1,8 @@
-import type { OutputFormat, QualityMode } from '../../config/constants.js';
+import type { OutputFormat, QualityMode, RemovalMode } from '../../config/constants.js';
 import type { InferenceWorker } from '../../infrastructure/ai/inference-worker.js';
 import type { ModelManager } from '../../infrastructure/ai/model-manager.js';
+import { ForegroundPreserver } from '../../infrastructure/cv/foreground-preservation.js';
+import type { FusedForeground } from '../../infrastructure/cv/types.js';
 import type { ImageProcessor } from '../../infrastructure/image/image.processor.js';
 import { cropLetterboxMask } from '../../infrastructure/image/letterbox.js';
 
@@ -11,6 +13,8 @@ export interface RemovalProcessInput {
   height: number;
   quality: QualityMode;
   format: OutputFormat;
+  mode: RemovalMode;
+  preserveText: boolean;
 }
 
 export interface RemovalProcessOutput {
@@ -21,6 +25,12 @@ export interface RemovalProcessOutput {
   hasTransparency: boolean;
   inferenceMs: number;
   modelName: string;
+  mode: RemovalMode;
+  preserveText: boolean;
+  textPreserved: boolean;
+  subjectCoverage: number;
+  overlayCoverage: number;
+  usedGraphicFallback: boolean;
 }
 
 export class BackgroundRemovalProcessor {
@@ -28,16 +38,24 @@ export class BackgroundRemovalProcessor {
     private readonly modelManager: ModelManager,
     private readonly inferenceWorker: InferenceWorker,
     private readonly imageProcessor: ImageProcessor,
+    private readonly foregroundPreserver: ForegroundPreserver = new ForegroundPreserver(),
   ) {}
 
   public async process(input: RemovalProcessInput): Promise<RemovalProcessOutput> {
     this.modelManager.assertReady();
     const provider = this.modelManager.getProvider();
 
+    const rgb = input.orientedRgb ?? (await this.decodeRgb(input.orientedBuffer));
+    const overlayPromise = this.foregroundPreserver.detectIfNeeded(
+      rgb,
+      input.width,
+      input.height,
+      input.mode,
+      input.preserveText,
+    );
+
     const modelInput = await this.imageProcessor.prepareModelInput(
-      input.orientedRgb
-        ? { rgb: input.orientedRgb, width: input.width, height: input.height }
-        : input.orientedBuffer,
+      { rgb, width: input.width, height: input.height },
       input.quality,
       provider.inputWidth,
       provider.inputHeight,
@@ -58,10 +76,23 @@ export class BackgroundRemovalProcessor {
       canvasHeight: inference.matte.height,
     });
 
+    const preserved = await this.foregroundPreserver.fuse(
+      cropped,
+      await overlayPromise,
+      input.width,
+      input.height,
+      input.mode,
+      input.preserveText,
+    );
+
     const composed = await this.imageProcessor.applySoftAlphaMask({
       orientedImage: input.orientedBuffer,
-      ...(input.orientedRgb ? { rgb: input.orientedRgb } : {}),
-      matte: cropped,
+      rgb,
+      matte: {
+        data: preserved.alpha,
+        width: input.width,
+        height: input.height,
+      },
       quality: input.quality,
       format: input.format,
       width: input.width,
@@ -72,6 +103,34 @@ export class BackgroundRemovalProcessor {
       ...composed,
       inferenceMs: inference.inferenceMs,
       modelName: provider.displayName,
+      ...preservationMeta(input, preserved),
     };
   }
+
+  private async decodeRgb(orientedBuffer: Buffer): Promise<Uint8Array> {
+    const oriented = await this.imageProcessor.orientAndDecode(orientedBuffer);
+    return oriented.rgb;
+  }
+}
+
+function preservationMeta(
+  input: RemovalProcessInput,
+  preserved: FusedForeground,
+): Pick<
+  RemovalProcessOutput,
+  | 'mode'
+  | 'preserveText'
+  | 'textPreserved'
+  | 'subjectCoverage'
+  | 'overlayCoverage'
+  | 'usedGraphicFallback'
+> {
+  return {
+    mode: input.mode,
+    preserveText: input.preserveText,
+    textPreserved: preserved.textPreserved,
+    subjectCoverage: preserved.subjectCoverage,
+    overlayCoverage: preserved.overlayCoverage,
+    usedGraphicFallback: preserved.usedGraphicFallback,
+  };
 }

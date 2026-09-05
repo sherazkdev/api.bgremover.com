@@ -46,6 +46,20 @@ export class FakeSegmentationProvider implements SegmentationProvider {
   }
 }
 
+export class EmptySegmentationProvider extends FakeSegmentationProvider {
+  public override async infer(_input: InferenceInput): Promise<InferenceOutput> {
+    this.inferCount += 1;
+    const width = this.inputWidth;
+    const height = this.inputHeight;
+    return {
+      matte: { data: new Uint8Array(width * height), width, height },
+      inferenceMs: 1,
+      modelInputWidth: width,
+      modelInputHeight: height,
+    };
+  }
+}
+
 export class FailingSegmentationProvider extends FakeSegmentationProvider {
   public override async initialize(): Promise<void> {
     this.initializeCount += 1;

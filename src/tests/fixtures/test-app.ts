@@ -36,6 +36,7 @@ export function createTestEnv(
     PUBLIC_BASE_URL: 'http://localhost:3000',
     UPLOAD_ROOT: uploadRoot,
     MAX_FILE_SIZE_MB: '10',
+    MAX_BULK_IMAGES: '10',
     MAX_IMAGE_WIDTH: '6000',
     MAX_IMAGE_HEIGHT: '6000',
     MAX_IMAGE_PIXELS: '25000000',

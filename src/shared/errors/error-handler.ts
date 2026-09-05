@@ -1,7 +1,7 @@
 import type { FastifyError, FastifyReply, FastifyRequest } from 'fastify';
 
 import { AppError, internalServerError, rateLimitExceededError } from './app-error.js';
-import { fileTooLargeError, multipleImagesError, validationError } from './app-error.js';
+import { fileTooLargeError, tooManyImagesError, validationError } from './app-error.js';
 import type { Env } from '../../config/env.js';
 
 export interface ErrorBody {
@@ -41,13 +41,14 @@ export function mapUnknownError(error: unknown, env: Env): AppError {
   }
 
   const mapped = asMappedError(error);
+  if (mapped.code === 'FST_FILES_LIMIT') {
+    return tooManyImagesError(env.MAX_BULK_IMAGES);
+  }
+  if (mapped.code === 'FST_PARTS_LIMIT') {
+    return validationError('The request contains too many multipart parts');
+  }
   if (mapped.code === 'FST_REQ_FILE_TOO_LARGE' || mapped.statusCode === 413) {
     return fileTooLargeError(env.MAX_FILE_SIZE_MB);
-  }
-  if (mapped.code === 'FST_FILES_LIMIT' || mapped.code === 'FST_PARTS_LIMIT') {
-    return mapped.code === 'FST_FILES_LIMIT'
-      ? multipleImagesError()
-      : validationError('The request contains too many multipart parts');
   }
   if (mapped.code === 'FST_ERR_RATE_LIMIT' || mapped.statusCode === 429) {
     return rateLimitExceededError();

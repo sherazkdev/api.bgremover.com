@@ -5,15 +5,23 @@ export function renderIndexPage(env: Env): string {
   const prefix = env.API_PREFIX;
   const docsUrl = '/docs';
   const removeUrl = `${prefix}/remove-background`;
+  const bulkUrl = `${prefix}/remove-backgrounds`;
   const healthUrl = `${prefix}/health`;
   const readyUrl = `${prefix}/health/ready`;
   const maxMb = env.MAX_FILE_SIZE_MB;
+  const maxBulk = env.MAX_BULK_IMAGES;
   const curlCommand = `curl -X POST ${removeUrl} \\
   -H "x-api-key: $API_KEY" \\
   -F image=@photo.jpg \\
   -F format=png \\
   -F quality=hd \\
   -F responseMode=json`;
+  const bulkCurlCommand = `curl -X POST ${bulkUrl} \\
+  -H "x-api-key: $API_KEY" \\
+  -F images=@photo1.jpg \\
+  -F images=@photo2.png \\
+  -F format=png \\
+  -F quality=hd`;
 
   return `<!doctype html>
 <html lang="en">
@@ -418,6 +426,117 @@ export function renderIndexPage(env: Env): string {
     .banner.err { background: var(--err-bg); color: var(--err); }
     .banner.ok { background: var(--ok-bg); color: var(--ok); }
     .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0); }
+    .tabs {
+      display: flex;
+      gap: 6px;
+      margin: 0 0 16px;
+      padding: 4px;
+      background: #F1F5F9;
+      border-radius: 12px;
+    }
+    .tab {
+      flex: 1;
+      border: 0;
+      background: transparent;
+      color: var(--muted);
+      font-weight: 700;
+      font-size: 13px;
+      padding: 8px 10px;
+      border-radius: 9px;
+      cursor: pointer;
+    }
+    .tab.active { background: #fff; color: var(--text); box-shadow: var(--shadow); }
+    .check-row {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      margin-top: 14px;
+      padding: 10px 12px;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: #F8FAFC;
+    }
+    .check-row input { margin-top: 3px; accent-color: var(--primary); }
+    .check-row span { font-size: 13px; font-weight: 700; }
+    .check-row small { display: block; color: var(--muted); font-weight: 500; }
+    .counter {
+      margin: 10px 0 0;
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--muted);
+    }
+    .batch-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(148px, 1fr));
+      gap: 10px;
+      margin-top: 12px;
+    }
+    .batch-card {
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+      background: #fff;
+      min-width: 0;
+    }
+    .batch-thumb {
+      aspect-ratio: 1;
+      background: repeating-conic-gradient(#E2E8F0 0% 25%, #F8FAFC 0% 50%) 50% / 14px 14px;
+      display: grid;
+      place-items: center;
+      overflow: hidden;
+    }
+    .batch-thumb img { width: 100%; height: 100%; object-fit: contain; display: block; }
+    .batch-body { padding: 8px; }
+    .batch-body b, .batch-body small { display: block; }
+    .batch-body b {
+      font-size: 12px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .batch-body small { color: var(--muted); font-size: 11px; }
+    .status-pill {
+      display: inline-flex;
+      margin-top: 6px;
+      border-radius: 999px;
+      padding: 2px 7px;
+      font-size: 11px;
+      font-weight: 700;
+      background: #F1F5F9;
+      color: var(--muted);
+    }
+    .status-pill.ok { background: var(--ok-bg); color: var(--ok); }
+    .status-pill.bad { background: var(--err-bg); color: var(--err); }
+    .status-pill.busy { background: var(--primary-light); color: var(--primary); }
+    .batch-actions { display: flex; gap: 4px; margin-top: 8px; flex-wrap: wrap; }
+    .tiny {
+      border: 0;
+      background: var(--primary-light);
+      color: var(--primary);
+      border-radius: 8px;
+      padding: 5px 7px;
+      font-size: 11px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .tiny.danger { background: var(--err-bg); color: var(--err); }
+    .tiny:disabled { opacity: 0.4; cursor: not-allowed; }
+    .progress {
+      margin-top: 6px;
+      height: 4px;
+      border-radius: 999px;
+      background: #E2E8F0;
+      overflow: hidden;
+    }
+    .progress > span {
+      display: block;
+      height: 100%;
+      width: 35%;
+      background: var(--primary);
+      animation: load 1s linear infinite;
+    }
+    @keyframes load { from { transform: translateX(-120%); } to { transform: translateX(320%); } }
+    .drop.disabled { opacity: 0.5; pointer-events: none; }
     @media (max-width: 720px) {
       .header-inner { flex-wrap: wrap; }
       .hero { flex-direction: column; }
@@ -452,7 +571,7 @@ export function renderIndexPage(env: Env): string {
     <section class="hero">
       <div>
         <h1>Remove backgrounds with one API call</h1>
-        <p>Send an image and get a clean cutout with a transparent background.</p>
+        <p>Send one image or a batch of up to ${maxBulk}. Text, logos, and badges stay in the cutout.</p>
       </div>
       <div id="status" class="status">
         <span id="dot" class="dot"></span>
@@ -463,6 +582,10 @@ export function renderIndexPage(env: Env): string {
     <div class="workspace">
       <section class="card">
         <h2>Try the API</h2>
+        <div class="tabs" role="tablist">
+          <button id="tab-single" class="tab active" type="button" role="tab" aria-selected="true">Single image</button>
+          <button id="tab-batch" class="tab" type="button" role="tab" aria-selected="false">Batch up to ${maxBulk}</button>
+        </div>
         <label class="label" for="key">x-api-key</label>
         <div class="field">
           <input id="key" type="password" autocomplete="off" spellcheck="false" placeholder="Paste API_KEY from your .env" />
@@ -475,6 +598,7 @@ export function renderIndexPage(env: Env): string {
         </div>
         <p id="key-err" class="hint" hidden></p>
 
+        <div id="panel-single">
         <label class="drop" id="drop" for="file">
           <svg width="28" height="28" viewBox="0 0 24 24" fill="none">
             <path d="M12 16V5M12 5l-3.4 3.4M12 5l3.4 3.4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
@@ -498,6 +622,27 @@ export function renderIndexPage(env: Env): string {
             </svg>
           </button>
         </div>
+        </div>
+
+        <div id="panel-batch" hidden>
+          <label class="drop" id="batch-drop" for="batch-file">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none">
+              <path d="M12 16V5M12 5l-3.4 3.4M12 5l3.4 3.4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+              <path d="M5 16.5V18a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-1.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+            </svg>
+            <strong>Drag &amp; drop up to ${maxBulk} images</strong>
+            <span>or click to browse</span>
+            <span>Select up to ${maxBulk} images · PNG, JPG, WEBP</span>
+          </label>
+          <input id="batch-file" class="sr" type="file" accept="image/jpeg,image/png,image/webp" multiple />
+          <p id="batch-counter" class="counter">0/${maxBulk} selected</p>
+          <p id="batch-limit" class="hint err" hidden>You can select up to ${maxBulk} images.</p>
+          <div id="batch-grid" class="batch-grid"></div>
+          <div class="preview-actions" style="margin-top:12px">
+            <button id="batch-clear" class="linkish" type="button" disabled>Clear all</button>
+            <button id="batch-download-all" class="ghost" type="button" disabled>Download All</button>
+          </div>
+        </div>
 
         <div class="controls">
           <div>
@@ -515,12 +660,28 @@ export function renderIndexPage(env: Env): string {
             </select>
           </div>
         </div>
+        <div class="controls">
+          <div>
+            <label class="label" for="mode">Mode</label>
+            <select id="mode">
+              <option value="auto" selected>Auto</option>
+              <option value="person">Person</option>
+              <option value="product">Product</option>
+              <option value="document">Document</option>
+              <option value="graphic">Graphic / poster</option>
+            </select>
+          </div>
+        </div>
+        <label class="check-row" for="preserve-text">
+          <input id="preserve-text" type="checkbox" checked />
+          <span>Preserve text, logos, and foreground graphics<small>Keeps Urdu, Arabic, English text, badges, and stickers in the cutout.</small></span>
+        </label>
 
         <button id="run" class="primary" type="button">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
             <path d="M4 12 20 5l-6.2 14L11 13 4 12Z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/>
           </svg>
-          Remove Background
+          <span id="run-label">Remove Background</span>
         </button>
       </section>
 
@@ -551,7 +712,32 @@ export function renderIndexPage(env: Env): string {
   <span class="flag">-F</span> quality=hd \\
   <span class="flag">-F</span> responseMode=json</pre>
         </div>
-        <p class="note">Health checks stay public. <code>POST ${removeUrl}</code> requires the key from <code>API_KEY</code>.</p>
+        <p class="label">Bulk endpoint</p>
+        <div class="endpoint">
+          <span class="method">POST</span>
+          <code>${bulkUrl}</code>
+          <button id="copy-bulk-endpoint" class="icon-btn" type="button" aria-label="Copy bulk endpoint">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+              <rect x="8" y="8" width="11" height="11" rx="2" stroke="currentColor" stroke-width="1.7"/>
+              <path d="M5 15.2V6.8A1.8 1.8 0 0 1 6.8 5H15" stroke="currentColor" stroke-width="1.7"/>
+            </svg>
+          </button>
+        </div>
+        <div class="code">
+          <button id="copy-bulk-curl" class="icon-btn copy-abs" type="button" aria-label="Copy bulk cURL">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+              <rect x="8" y="8" width="11" height="11" rx="2" stroke="currentColor" stroke-width="1.7"/>
+              <path d="M5 15.2V6.8A1.8 1.8 0 0 1 6.8 5H15" stroke="currentColor" stroke-width="1.7"/>
+            </svg>
+          </button>
+          <pre><span class="kw">curl</span> <span class="flag">-X</span> <span class="str">POST</span> ${bulkUrl} \\
+  <span class="flag">-H</span> <span class="str">"x-api-key: $API_KEY"</span> \\
+  <span class="flag">-F</span> images=@photo1.jpg \\
+  <span class="flag">-F</span> images=@photo2.png \\
+  <span class="flag">-F</span> format=png \\
+  <span class="flag">-F</span> quality=hd</pre>
+        </div>
+        <p class="note">Health checks stay public. <code>POST ${removeUrl}</code> and <code>POST ${bulkUrl}</code> require the key from <code>API_KEY</code>.</p>
         <div class="facts">
           <div class="fact">
             <span class="fact-ico" aria-hidden="true">
@@ -577,6 +763,17 @@ export function renderIndexPage(env: Env): string {
               </svg>
             </span>
             <div><b>HD output</b><small>High-quality results</small></div>
+          </div>
+          <div class="fact">
+            <span class="fact-ico" aria-hidden="true">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                <rect x="4" y="6" width="7" height="7" rx="1.4" stroke="currentColor" stroke-width="1.7"/>
+                <rect x="13" y="6" width="7" height="7" rx="1.4" stroke="currentColor" stroke-width="1.7"/>
+                <rect x="4" y="15" width="7" height="3" rx="1.2" stroke="currentColor" stroke-width="1.7"/>
+                <rect x="13" y="15" width="7" height="3" rx="1.2" stroke="currentColor" stroke-width="1.7"/>
+              </svg>
+            </span>
+            <div><b>Up to ${maxBulk} images</b><small>Bulk remove in one call</small></div>
           </div>
         </div>
       </section>
@@ -627,7 +824,9 @@ export function renderIndexPage(env: Env): string {
   <script>
     const healthUrl = ${JSON.stringify(healthUrl)};
     const removeUrl = ${JSON.stringify(removeUrl)};
+    const bulkUrl = ${JSON.stringify(bulkUrl)};
     const curlCommand = ${JSON.stringify(curlCommand)};
+    const bulkCurlCommand = ${JSON.stringify(bulkCurlCommand)};
     const statusEl = document.getElementById('status');
     const statusText = document.getElementById('status-text');
     fetch(healthUrl).then((r) => r.ok ? r.json() : Promise.reject()).then(() => {
@@ -650,7 +849,30 @@ export function renderIndexPage(env: Env): string {
     const downloadBtn = document.getElementById('download');
     const qualityInput = document.getElementById('quality');
     const formatInput = document.getElementById('format');
+    const modeInput = document.getElementById('mode');
+    const preserveTextInput = document.getElementById('preserve-text');
+    const maxBulk = ${maxBulk};
+    const tabSingle = document.getElementById('tab-single');
+    const tabBatch = document.getElementById('tab-batch');
+    const panelSingle = document.getElementById('panel-single');
+    const panelBatch = document.getElementById('panel-batch');
+    const runLabel = document.getElementById('run-label');
+    let view = 'single';
     keyInput.value = sessionStorage.getItem('bg-api-key') || '';
+
+    function setView(next) {
+      view = next;
+      const batch = next === 'batch';
+      tabSingle.classList.toggle('active', !batch);
+      tabBatch.classList.toggle('active', batch);
+      tabSingle.setAttribute('aria-selected', String(!batch));
+      tabBatch.setAttribute('aria-selected', String(batch));
+      panelSingle.hidden = batch;
+      panelBatch.hidden = !batch;
+      runLabel.textContent = batch ? 'Remove Backgrounds' : 'Remove Background';
+    }
+    tabSingle.addEventListener('click', () => setView('single'));
+    tabBatch.addEventListener('click', () => setView('batch'));
 
     document.getElementById('toggle-key').addEventListener('click', () => {
       const hidden = keyInput.type === 'password';
@@ -718,6 +940,8 @@ export function renderIndexPage(env: Env): string {
     }
     document.getElementById('copy-endpoint').addEventListener('click', () => copyText(removeUrl));
     document.getElementById('copy-curl').addEventListener('click', () => copyText(curlCommand));
+    document.getElementById('copy-bulk-endpoint').addEventListener('click', () => copyText(bulkUrl));
+    document.getElementById('copy-bulk-curl').addEventListener('click', () => copyText(bulkCurlCommand));
 
     document.getElementById('reset').addEventListener('click', () => {
       clearFile();
@@ -740,8 +964,149 @@ export function renderIndexPage(env: Env): string {
       link.click();
     });
 
+    const batchFile = document.getElementById('batch-file');
+    const batchDrop = document.getElementById('batch-drop');
+    const batchGrid = document.getElementById('batch-grid');
+    const batchCounter = document.getElementById('batch-counter');
+    const batchLimit = document.getElementById('batch-limit');
+    const batchClear = document.getElementById('batch-clear');
+    const batchDownloadAll = document.getElementById('batch-download-all');
+    const batchItems = [];
+    let zipUrl = '';
+
+    function renderBatch() {
+      batchCounter.textContent = batchItems.length + '/' + maxBulk + ' selected';
+      batchDrop.classList.toggle('disabled', batchItems.length >= maxBulk);
+      batchFile.disabled = batchItems.length >= maxBulk;
+      batchClear.disabled = batchItems.length === 0;
+      batchDownloadAll.disabled = !zipUrl && !batchItems.some((item) => item.status === 'completed');
+      batchGrid.innerHTML = batchItems.map((item, index) => {
+        const pill = item.status === 'completed' ? 'ok' : item.status === 'failed' ? 'bad' : item.status === 'processing' ? 'busy' : '';
+        const progress = item.status === 'processing' ? '<div class="progress"><span></span></div>' : '';
+        const download = item.status === 'completed' && item.url
+          ? '<button class="tiny" data-act="dl" data-i="' + index + '" type="button">Download</button>'
+          : '';
+        const retry = item.status === 'failed'
+          ? '<button class="tiny" data-act="retry" data-i="' + index + '" type="button">Retry</button>'
+          : '';
+        return '<article class="batch-card"><div class="batch-thumb"><img src="' + item.preview + '" alt=""></div><div class="batch-body"><b>' + escapeHtml(item.file.name) + '</b><small>' + formatSize(item.file.size) + '</small><span class="status-pill ' + pill + '">' + (item.message || item.status) + '</span>' + progress + '<div class="batch-actions"><button class="tiny danger" data-act="rm" data-i="' + index + '" type="button">Remove</button>' + retry + download + '</div></div></div></article>';
+      }).join('');
+    }
+
+    function escapeHtml(value) {
+      return value.replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
+    }
+
+    function addBatchFiles(fileList) {
+      batchLimit.hidden = true;
+      const incoming = Array.from(fileList || []);
+      if (batchItems.length + incoming.length > maxBulk) {
+        batchLimit.hidden = false;
+        return;
+      }
+      for (const file of incoming) {
+        if (batchItems.length >= maxBulk) {
+          batchLimit.hidden = false;
+          break;
+        }
+        batchItems.push({
+          file,
+          preview: URL.createObjectURL(file),
+          status: 'ready',
+          message: 'Ready',
+          url: '',
+        });
+      }
+      renderBatch();
+    }
+
+    batchFile.addEventListener('change', () => {
+      addBatchFiles(batchFile.files);
+      batchFile.value = '';
+    });
+    ;['dragenter', 'dragover'].forEach((type) => {
+      batchDrop.addEventListener(type, (event) => {
+        event.preventDefault();
+        batchDrop.classList.add('drag');
+      });
+    });
+    ;['dragleave', 'drop'].forEach((type) => {
+      batchDrop.addEventListener(type, (event) => {
+        event.preventDefault();
+        batchDrop.classList.remove('drag');
+      });
+    });
+    batchDrop.addEventListener('drop', (event) => {
+      addBatchFiles(event.dataTransfer && event.dataTransfer.files);
+    });
+    batchGrid.addEventListener('click', (event) => {
+      const button = event.target.closest('button[data-act]');
+      if (!button) return;
+      const index = Number(button.getAttribute('data-i'));
+      const item = batchItems[index];
+      if (!item) return;
+      if (button.getAttribute('data-act') === 'rm') {
+        batchItems.splice(index, 1);
+        zipUrl = '';
+        renderBatch();
+      }
+      if (button.getAttribute('data-act') === 'dl' && item.url) {
+        const link = document.createElement('a');
+        link.href = item.url;
+        link.download = 'background-removed-' + item.file.name.replace(/\\.[^.]+$/, '') + '.' + (formatInput.value || 'png');
+        link.click();
+      }
+      if (button.getAttribute('data-act') === 'retry') {
+        retryOne(item);
+      }
+    });
+    batchClear.addEventListener('click', () => {
+      batchItems.length = 0;
+      zipUrl = '';
+      batchLimit.hidden = true;
+      renderBatch();
+    });
+    batchDownloadAll.addEventListener('click', () => {
+      if (zipUrl) {
+        const link = document.createElement('a');
+        link.href = zipUrl;
+        link.download = 'background-removed-images.zip';
+        link.click();
+      }
+    });
+
+    function sharedFields(body) {
+      body.set('format', formatInput.value || 'png');
+      body.set('quality', qualityInput.value || 'hd');
+      body.set('mode', modeInput.value || 'auto');
+      body.set('preserveText', preserveTextInput.checked ? 'true' : 'false');
+    }
+
+    async function retryOne(item) {
+      const key = keyInput.value.trim();
+      if (!key) return;
+      item.status = 'processing';
+      item.message = 'Processing';
+      renderBatch();
+      try {
+        const body = new FormData();
+        body.set('image', item.file);
+        sharedFields(body);
+        body.set('responseMode', 'json');
+        const response = await fetch(removeUrl, { method: 'POST', headers: { 'x-api-key': key }, body });
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload?.error?.message || 'Retry failed');
+        item.status = 'completed';
+        item.message = 'Completed';
+        item.url = payload.data.result.url;
+      } catch (error) {
+        item.status = 'failed';
+        item.message = error instanceof Error ? error.message : 'Failed';
+      }
+      renderBatch();
+    }
+
     document.getElementById('run').addEventListener('click', async () => {
-      const file = fileInput.files[0];
       const key = keyInput.value.trim();
       const err = document.getElementById('err');
       const img = document.getElementById('out');
@@ -756,12 +1121,62 @@ export function renderIndexPage(env: Env): string {
         keyErr.className = 'hint err';
         return;
       }
-      if (!file) { err.textContent = 'Choose an image.'; err.hidden = false; return; }
       sessionStorage.setItem('bg-api-key', key);
+
+      if (view === 'batch') {
+        if (batchItems.length === 0) { err.textContent = 'Choose 1 to ' + maxBulk + ' images.'; err.hidden = false; return; }
+        const body = new FormData();
+        for (const item of batchItems) body.append('images', item.file);
+        sharedFields(body);
+        batchItems.forEach((item) => { item.status = 'processing'; item.message = 'Processing'; });
+        zipUrl = '';
+        renderBatch();
+        btn.disabled = true;
+        const started = Date.now();
+        try {
+          const response = await fetch(bulkUrl, { method: 'POST', headers: { 'x-api-key': key }, body });
+          const payload = await response.json();
+          if (!response.ok) throw new Error(payload?.error?.message || ('Request failed (' + response.status + ')'));
+          for (const result of payload.data.items || []) {
+            const item = batchItems[result.index];
+            if (!item) continue;
+            if (result.status === 'completed') {
+              item.status = 'completed';
+              item.message = result.textPreserved ? 'Completed · text kept' : 'Completed';
+              item.url = result.result.url;
+            } else {
+              item.status = 'failed';
+              item.message = result.message || result.errorCode || 'Failed';
+            }
+          }
+          zipUrl = payload.data.zip && payload.data.zip.url ? payload.data.zip.url : '';
+          meta.textContent = payload.data.completed + '/' + payload.data.count + ' completed · ' + ((Date.now() - started) / 1000).toFixed(1) + 's';
+          meta.hidden = false;
+          if (payload.data.failed > 0) {
+            err.textContent = payload.data.failed + ' image(s) failed. Use Retry on those cards.';
+            err.hidden = false;
+          }
+        } catch (error) {
+          batchItems.forEach((item) => {
+            if (item.status === 'processing') {
+              item.status = 'failed';
+              item.message = error instanceof Error ? error.message : 'Failed';
+            }
+          });
+          err.textContent = error instanceof Error ? error.message : 'Request failed';
+          err.hidden = false;
+        } finally {
+          renderBatch();
+          btn.disabled = false;
+        }
+        return;
+      }
+
+      const file = fileInput.files[0];
+      if (!file) { err.textContent = 'Choose an image.'; err.hidden = false; return; }
       const body = new FormData();
       body.set('image', file);
-      body.set('format', formatInput.value || 'png');
-      body.set('quality', qualityInput.value || 'hd');
+      sharedFields(body);
       body.set('responseMode', 'binary');
       btn.disabled = true;
       resultEmpty.querySelector('p').textContent = 'Processing image…';

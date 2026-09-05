@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 
-const SAFE_EXTENSIONS = new Set(['jpg', 'jpeg', 'png', 'webp']);
+const SAFE_EXTENSIONS = new Set(['jpg', 'jpeg', 'png', 'webp', 'zip']);
 
 export function generateImageId(): string {
   return randomUUID();
@@ -24,7 +24,7 @@ export function assertSafeExtension(extension: string): string {
 }
 
 export function buildDatedRelativePath(
-  kind: 'originals' | 'processed',
+  kind: 'originals' | 'processed' | 'archives',
   id: string,
   extension: string,
   date: Date = new Date(),

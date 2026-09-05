@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
+import { bodyLimitBytes, requestTimeoutMs } from '../../config/constants.js';
 import { EnvValidationError, parseEnv } from '../../config/env.js';
 
 describe('parseEnv', () => {
@@ -12,6 +13,11 @@ describe('parseEnv', () => {
     expect(env.MODEL_ID).toBe('studioludens/birefnet-lite-512');
     expect(env.API_KEY).toBe('test-api-key');
     expect(env.BG_REMOVAL_CONCURRENCY).toBe(1);
+    expect(env.MAX_BULK_IMAGES).toBe(8);
+    expect(bodyLimitBytes(env.MAX_FILE_SIZE_MB, env.MAX_BULK_IMAGES)).toBeGreaterThan(
+      12 * 1024 * 1024,
+    );
+    expect(requestTimeoutMs(env.MAX_BULK_IMAGES)).toBeGreaterThanOrEqual(180_000);
   });
 
   it('coerces numeric strings', () => {
@@ -24,6 +30,15 @@ describe('parseEnv', () => {
     expect(env.PORT).toBe(4100);
     expect(env.MAX_FILE_SIZE_MB).toBe(8);
     expect(env.BG_REMOVAL_QUEUE_LIMIT).toBe(5);
+  });
+
+  it('rejects an invalid bulk image cap', () => {
+    expect(() => parseEnv({ API_KEY: 'test-api-key', MAX_BULK_IMAGES: '0' })).toThrow(
+      EnvValidationError,
+    );
+    expect(() => parseEnv({ API_KEY: 'test-api-key', MAX_BULK_IMAGES: '31' })).toThrow(
+      EnvValidationError,
+    );
   });
 
   it('rejects an invalid port', () => {

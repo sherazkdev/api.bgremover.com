@@ -2,6 +2,7 @@ export const ERROR_CODES = [
   'VALIDATION_ERROR',
   'IMAGE_REQUIRED',
   'MULTIPLE_IMAGES_NOT_ALLOWED',
+  'TOO_MANY_IMAGES',
   'FILE_TOO_LARGE',
   'UNSUPPORTED_IMAGE_TYPE',
   'CORRUPT_IMAGE',
@@ -11,6 +12,8 @@ export const ERROR_CODES = [
   'MODEL_UNAVAILABLE',
   'PROCESSING_QUEUE_FULL',
   'BACKGROUND_REMOVAL_FAILED',
+  'NO_REMOVABLE_SUBJECT',
+  'PROCESSING_FAILED',
   'FILE_STORAGE_FAILED',
   'INVALID_API_KEY',
   'RATE_LIMIT_EXCEEDED',
@@ -45,6 +48,22 @@ export function multipleImagesError(): AppError {
   return new AppError(
     'MULTIPLE_IMAGES_NOT_ALLOWED',
     'Only one image may be uploaded per request',
+    400,
+  );
+}
+
+export function imagesRequiredError(): AppError {
+  return new AppError(
+    'IMAGE_REQUIRED',
+    'At least one image file is required in the "images" field',
+    400,
+  );
+}
+
+export function tooManyImagesError(maxImages: number): AppError {
+  return new AppError(
+    'TOO_MANY_IMAGES',
+    `A maximum of ${maxImages} images may be uploaded per request`,
     400,
   );
 }
@@ -112,6 +131,19 @@ export function backgroundRemovalFailedError(details: unknown = null): AppError 
     500,
     details,
   );
+}
+
+export function noRemovableSubjectError(details: unknown = null): AppError {
+  return new AppError(
+    'NO_REMOVABLE_SUBJECT',
+    'No removable background could be identified without deleting the image content',
+    422,
+    details,
+  );
+}
+
+export function processingFailedError(message: string, details: unknown = null): AppError {
+  return new AppError('PROCESSING_FAILED', message, 500, details);
 }
 
 export function fileStorageFailedError(): AppError {
