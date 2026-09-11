@@ -1,5 +1,10 @@
-import type { OutputFormat } from '../../config/constants.js';
+import type { OutputFormat, RemovalMode } from '../../config/constants.js';
 import { BULK_PROCESS_CONCURRENCY } from '../../config/constants.js';
+import {
+  resolvePreservationOptions,
+  type PreservationInput,
+  type PreservationOptions,
+} from '../../infrastructure/cv/preservation-options.js';
 import type { Env } from '../../config/env.js';
 import type { ImageProcessor } from '../../infrastructure/image/image.processor.js';
 import type { ImageValidator, ValidatedImage } from '../../infrastructure/image/image.validator.js';
@@ -23,9 +28,11 @@ import {
   SUCCESS_MESSAGE,
 } from './background-removal.constants.js';
 import type {
+  BulkCompletedItem,
   BulkFailedItem,
   BulkRemoveBackgroundItem,
   RemoveBackgroundJsonResponse,
+  PerImageRemovalOptions,
   RemoveBackgroundOptions,
   RemoveBackgroundResult,
   RemoveBackgroundsJsonResponse,
@@ -65,10 +72,11 @@ export class BackgroundRemovalService {
   ): Promise<RemoveBackgroundResult> {
     const prepared = await this.prepareImage(upload, options.format, 0);
     const enqueuedAt = Date.now();
+    const itemOptions = resolveItemOptions(options, 0);
 
     try {
       return await this.queue.add(() =>
-        this.processPrepared(prepared, options, logger, enqueuedAt),
+        this.processPrepared(prepared, options, itemOptions, logger, enqueuedAt),
       );
     } catch (error) {
       await this.removeStoredPair(prepared.originalRelativePath, prepared.resultRelativePath);
@@ -96,6 +104,7 @@ export class BackgroundRemovalService {
 
     const enqueuedAt = Date.now();
     const batchStarted = Date.now();
+    const perImageOptions = parseImageOptions(options.imageOptions);
     let processed: BulkRemoveBackgroundItem[] = [];
 
     if (prepared.length > 0) {
@@ -107,7 +116,14 @@ export class BackgroundRemovalService {
           );
           return mapLimit(prepared, concurrency, async (item) => {
             try {
-              const result = await this.processPrepared(item, options, logger, enqueuedAt);
+              const itemOptions = resolveItemOptions(options, item.index, perImageOptions);
+              const result = await this.processPrepared(
+                item,
+                options,
+                itemOptions,
+                logger,
+                enqueuedAt,
+              );
               return toCompletedItem(result, item);
             } catch (error) {
               await this.removeStoredPair(item.originalRelativePath, item.resultRelativePath);
@@ -129,8 +145,11 @@ export class BackgroundRemovalService {
     }
 
     const items = [...processed, ...failed].sort((left, right) => left.index - right.index);
-    const completedItems = items.filter((item) => item.status === 'completed');
-    const zip = await this.createZipArchive(completedItems, options.format);
+    const completedItems = items.filter(
+      (item): item is BulkCompletedItem =>
+        item.status === 'completed' || item.status === 'needs_review',
+    );
+    const zip = await this.createZipArchive(items, options.format);
     const durationMs = Date.now() - batchStarted;
 
     logger?.info(
@@ -155,7 +174,7 @@ export class BackgroundRemovalService {
       zip,
       quality: options.quality,
       mode: options.mode,
-      preserveText: options.preserveText,
+      preserveText: options.preserveText ?? true,
     };
   }
 
@@ -257,6 +276,7 @@ export class BackgroundRemovalService {
   private async processPrepared(
     prepared: PreparedImage,
     options: RemoveBackgroundsOptions,
+    itemOptions: { mode: RemovalMode; preservation: PreservationOptions },
     logger: ServiceLogger | undefined,
     enqueuedAt: number,
   ): Promise<RemoveBackgroundResult> {
@@ -273,8 +293,8 @@ export class BackgroundRemovalService {
         height: oriented.height,
         quality: options.quality,
         format: options.format,
-        mode: options.mode,
-        preserveText: options.preserveText,
+        mode: itemOptions.mode,
+        preservation: itemOptions.preservation,
       }),
     ]);
 
@@ -324,9 +344,14 @@ export class BackgroundRemovalService {
         model: processed.modelName,
         quality: options.quality,
         durationMs,
-        mode: options.mode,
-        preserveText: options.preserveText,
+        mode: itemOptions.mode,
+        appliedMode: itemOptions.mode,
+        status: processed.needsReview ? 'needs_review' : 'completed',
+        preserveText: itemOptions.preservation.preserveText,
+        preserveLogos: itemOptions.preservation.preserveLogos,
+        preserveTextContainers: itemOptions.preservation.preserveTextContainers,
         textPreserved: processed.textPreserved,
+        needsReview: processed.needsReview,
       },
       createdAt: prepared.createdAt.toISOString(),
       originalRelativePath: prepared.originalRelativePath,
@@ -336,25 +361,63 @@ export class BackgroundRemovalService {
   }
 
   private async createZipArchive(
-    completed: Array<Extract<BulkRemoveBackgroundItem, { status: 'completed' }>>,
+    items: BulkRemoveBackgroundItem[],
     format: OutputFormat,
   ): Promise<RemoveBackgroundsResult['zip']> {
+    const completed = items.filter(
+      (item): item is BulkCompletedItem =>
+        item.status === 'completed' || item.status === 'needs_review',
+    );
     if (completed.length === 0) {
       return null;
     }
 
-    const entries = completed.flatMap((item, order) => {
+    const manifest = {
+      generatedAt: new Date().toISOString(),
+      format,
+      items: items.map((item) =>
+        item.status === 'failed'
+          ? {
+              index: item.index,
+              filename: item.filename,
+              status: item.status,
+              errorCode: item.errorCode,
+              message: item.message,
+            }
+          : {
+              index: item.index,
+              filename: item.filename,
+              status: item.status,
+              id: item.id,
+              mode: item.processing.appliedMode,
+              needsReview: item.needsReview,
+              textPreserved: item.textPreserved,
+              warning:
+                item.status === 'needs_review'
+                  ? 'Output may need manual review before publishing.'
+                  : undefined,
+            },
+      ),
+    };
+
+    const entries = [
+      {
+        name: 'manifest.json',
+        data: Buffer.from(JSON.stringify(manifest, null, 2), 'utf8'),
+      },
+      ...completed.flatMap((item, order) => {
       if (!item.resultBuffer) {
         return [];
       }
       const base = sanitizeContentDispositionFilename(item.filename.replace(/\.[^.]+$/, ''));
-      return [
-        {
-          name: `${String(order + 1).padStart(2, '0')}-${base || 'image'}-transparent.${format}`,
-          data: item.resultBuffer,
-        },
-      ];
-    });
+        return [
+          {
+            name: `${String(order + 1).padStart(2, '0')}-${base || 'image'}-transparent.${format}`,
+            data: item.resultBuffer,
+          },
+        ];
+      }),
+    ];
     if (entries.length === 0) {
       return null;
     }
@@ -389,23 +452,64 @@ function isFailedItem(value: PreparedImage | BulkFailedItem): value is BulkFaile
 function toCompletedItem(
   result: RemoveBackgroundResult,
   prepared: PreparedImage,
-): Extract<BulkRemoveBackgroundItem, { status: 'completed' }> {
+): Extract<BulkRemoveBackgroundItem, { status: 'completed' | 'needs_review' }> {
   return {
     index: prepared.index,
     filename: prepared.upload.filename,
-    status: 'completed',
+    status: result.processing.needsReview ? 'needs_review' : 'completed',
     id: result.id,
     original: result.original,
     result: result.result,
     processing: result.processing,
     createdAt: result.createdAt,
     textPreserved: result.processing.textPreserved,
+    needsReview: result.processing.needsReview,
     resultBuffer: result.resultBuffer,
   };
 }
 
+function resolveItemOptions(
+  options: RemoveBackgroundsOptions | RemoveBackgroundOptions,
+  index: number,
+  perImage: PerImageRemovalOptions[] = [],
+): { mode: RemovalMode; preservation: PreservationOptions } {
+  const perImageOptions = perImage[index];
+  const mode = perImageOptions?.mode ?? options.mode;
+  const preservationInput: PreservationInput = {};
+  const preserveText = perImageOptions?.preserveText ?? options.preserveText;
+  const preserveLogos = perImageOptions?.preserveLogos ?? options.preserveLogos;
+  const preserveTextContainers =
+    perImageOptions?.preserveTextContainers ?? options.preserveTextContainers;
+  if (preserveText !== undefined) {
+    preservationInput.preserveText = preserveText;
+  }
+  if (preserveLogos !== undefined) {
+    preservationInput.preserveLogos = preserveLogos;
+  }
+  if (preserveTextContainers !== undefined) {
+    preservationInput.preserveTextContainers = preserveTextContainers;
+  }
+  const preservation = resolvePreservationOptions(mode, preservationInput);
+  return { mode, preservation };
+}
+
+function parseImageOptions(raw?: string): PerImageRemovalOptions[] {
+  if (!raw) {
+    return [];
+  }
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+    return parsed.filter((item) => item && typeof item === 'object') as PerImageRemovalOptions[];
+  } catch {
+    return [];
+  }
+}
+
 function toPublicBulkItem(item: BulkRemoveBackgroundItem): BulkRemoveBackgroundItem {
-  if (item.status !== 'completed') {
+  if (item.status === 'failed') {
     return item;
   }
   const { resultBuffer: _resultBuffer, ...publicItem } = item;

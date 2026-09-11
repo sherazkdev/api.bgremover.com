@@ -221,6 +221,40 @@ describe('text and overlay preservation', () => {
     }
   });
 
+  it('removes flat backgrounds behind text in text_background mode', async () => {
+    const provider = new EmptySegmentationProvider();
+    const poster = await readFile(posterPath);
+    const { response, env, cleanup } = await processImage(
+      poster,
+      'd500bd7a-c76f-4c36-aebc-a96f325c3e05.jpeg',
+      'image/jpeg',
+      { mode: 'text_background', preserveTextContainers: 'false' },
+      provider,
+    );
+    try {
+      expect(response.statusCode).toBe(200);
+      const body = response.json() as {
+        data: {
+          result: { url: string };
+          processing: { model: string; textPreserved: boolean; preserveTextContainers: boolean };
+        };
+      };
+      expect(body.data.processing.model).toBe('Graphic Cutout');
+      expect(body.data.processing.textPreserved).toBe(true);
+      expect(body.data.processing.preserveTextContainers).toBe(false);
+      const stats = await alphaStats(
+        path.join(env.UPLOAD_ROOT, new URL(body.data.result.url).pathname.replace(/^\/uploads\//, '')),
+      );
+      expect(stats.opaqueRatio).toBeGreaterThan(0.05);
+      expect(stats.opaqueRatio).toBeLessThan(0.85);
+      expect(stats.sample(Math.round(stats.width * 0.18), Math.round(stats.height * 0.08))).toBeGreaterThan(
+        40,
+      );
+    } finally {
+      await cleanup();
+    }
+  });
+
   it('does not wipe the supplied Urdu poster when no person is found', async () => {
     const provider = new EmptySegmentationProvider();
     const poster = await readFile(posterPath);
@@ -237,12 +271,13 @@ describe('text and overlay preservation', () => {
         data: {
           original: { width: number; height: number };
           result: { url: string; width: number; height: number };
-          processing: { textPreserved: boolean };
+          processing: { textPreserved: boolean; model: string };
         };
       };
       expect(body.data.result.width).toBe(body.data.original.width);
       expect(body.data.result.height).toBe(body.data.original.height);
       expect(body.data.processing.textPreserved).toBe(true);
+      expect(body.data.processing.model).toBe('Graphic Cutout');
       const stats = await alphaStats(
         path.join(env.UPLOAD_ROOT, new URL(body.data.result.url).pathname.replace(/^\/uploads\//, '')),
       );

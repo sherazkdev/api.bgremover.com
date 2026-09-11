@@ -12,6 +12,7 @@ export interface OverlayAnalysis {
   containerCoverage: number;
   overlayCoverage: number;
   nonBackgroundCoverage: number;
+  isTextHeavy: boolean;
 }
 
 export interface OverlayMasks {
@@ -25,6 +26,7 @@ export interface OverlayMasks {
 export interface FusedForeground {
   alpha: Uint8Array;
   textPreserved: boolean;
+  needsReview: boolean;
   subjectCoverage: number;
   overlayCoverage: number;
   fusedCoverage: number;

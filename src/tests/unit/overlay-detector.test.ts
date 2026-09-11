@@ -75,4 +75,19 @@ describe('overlay detector', () => {
       0.4,
     );
   });
+
+  it('does not treat ceiling fixtures above a person as text or logos', async () => {
+    const width = 160;
+    const height = 200;
+    const svg = `<svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">
+      <rect width="100%" height="100%" fill="#C9B8A0"/>
+      <rect x="30" y="8" width="100" height="18" fill="#E8E2D8"/>
+      <rect x="20" y="32" width="50" height="14" fill="#DDD6CC"/>
+      <circle cx="80" cy="130" r="48" fill="#E8B89A"/>
+    </svg>`;
+    const image = await rgbFrom(await sharp(Buffer.from(svg)).png().toBuffer());
+    const overlays = await detectOverlays(image.rgb, image.width, image.height);
+    expect(regionCoverage(overlays.textMask, width, 20, 4, 140, 50)).toBeLessThan(0.2);
+    expect(regionCoverage(overlays.logoAndOverlayMask, width, 20, 4, 140, 50)).toBeLessThan(0.2);
+  });
 });

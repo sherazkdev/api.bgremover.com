@@ -409,6 +409,28 @@ export function renderIndexPage(env: Env): string {
     .frame.checker {
       background: repeating-conic-gradient(#E2E8F0 0% 25%, #F8FAFC 0% 50%) 50% / 16px 16px;
     }
+    .frame.bg-white { background: #FFFFFF; }
+    .frame.bg-black { background: #111827; }
+    .frame.bg-color { background: #7C3AED; }
+    .preview-bg {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+      margin-top: 8px;
+    }
+    .preview-bg button {
+      border: 1px solid var(--border);
+      background: #fff;
+      border-radius: 999px;
+      padding: 4px 10px;
+      font-size: 12px;
+      cursor: pointer;
+    }
+    .preview-bg button.active {
+      border-color: var(--accent);
+      color: var(--accent);
+      font-weight: 600;
+    }
     .frame img { max-width: 100%; max-height: 360px; display: block; }
     .empty {
       text-align: center;
@@ -666,15 +688,26 @@ export function renderIndexPage(env: Env): string {
             <select id="mode">
               <option value="auto" selected>Auto</option>
               <option value="person">Person</option>
-              <option value="product">Product</option>
+              <option value="product">Product / object</option>
+              <option value="object">Object (alias)</option>
+              <option value="text_background">Text background removal</option>
               <option value="document">Document</option>
               <option value="graphic">Graphic / poster</option>
+              <option value="screenshot">Screenshot</option>
             </select>
           </div>
         </div>
         <label class="check-row" for="preserve-text">
           <input id="preserve-text" type="checkbox" checked />
-          <span>Preserve text, logos, and foreground graphics<small>Keeps Urdu, Arabic, English text, badges, and stickers in the cutout.</small></span>
+          <span>Preserve text<small>Keeps original lettering during person/object cutouts and mixed graphics.</small></span>
+        </label>
+        <label class="check-row" for="preserve-logos">
+          <input id="preserve-logos" type="checkbox" checked />
+          <span>Preserve logos and stickers<small>Keeps badges, icons, and overlay graphics when detected.</small></span>
+        </label>
+        <label class="check-row" for="preserve-containers">
+          <input id="preserve-containers" type="checkbox" checked />
+          <span>Preserve text containers<small>Keeps colored ribbons, cards, and label backgrounds. Off by default in text-background mode.</small></span>
         </label>
 
         <button id="run" class="primary" type="button">
@@ -804,7 +837,13 @@ export function renderIndexPage(env: Env): string {
         </div>
         <div class="pane">
           <h3>Background Removed</h3>
-          <div class="frame checker">
+          <div class="preview-bg" id="preview-bg" role="group" aria-label="Preview background">
+            <button type="button" data-bg="checker" class="active">Checker</button>
+            <button type="button" data-bg="white">White</button>
+            <button type="button" data-bg="black">Black</button>
+            <button type="button" data-bg="color">Color</button>
+          </div>
+          <div id="result-frame" class="frame checker">
             <img id="out" alt="Background removed" hidden />
             <div id="result-empty" class="empty">
               <svg width="28" height="28" viewBox="0 0 24 24" fill="none">
@@ -851,6 +890,10 @@ export function renderIndexPage(env: Env): string {
     const formatInput = document.getElementById('format');
     const modeInput = document.getElementById('mode');
     const preserveTextInput = document.getElementById('preserve-text');
+    const preserveLogosInput = document.getElementById('preserve-logos');
+    const preserveContainersInput = document.getElementById('preserve-containers');
+    const resultFrame = document.getElementById('result-frame');
+    const previewBg = document.getElementById('preview-bg');
     const maxBulk = ${maxBulk};
     const tabSingle = document.getElementById('tab-single');
     const tabBatch = document.getElementById('tab-batch');
@@ -981,9 +1024,9 @@ export function renderIndexPage(env: Env): string {
       batchClear.disabled = batchItems.length === 0;
       batchDownloadAll.disabled = !zipUrl && !batchItems.some((item) => item.status === 'completed');
       batchGrid.innerHTML = batchItems.map((item, index) => {
-        const pill = item.status === 'completed' ? 'ok' : item.status === 'failed' ? 'bad' : item.status === 'processing' ? 'busy' : '';
+        const pill = item.status === 'completed' || item.status === 'needs_review' ? 'ok' : item.status === 'failed' ? 'bad' : item.status === 'processing' ? 'busy' : '';
         const progress = item.status === 'processing' ? '<div class="progress"><span></span></div>' : '';
-        const download = item.status === 'completed' && item.url
+        const download = (item.status === 'completed' || item.status === 'needs_review') && item.url
           ? '<button class="tiny" data-act="dl" data-i="' + index + '" type="button">Download</button>'
           : '';
         const retry = item.status === 'failed'
@@ -1080,7 +1123,17 @@ export function renderIndexPage(env: Env): string {
       body.set('quality', qualityInput.value || 'hd');
       body.set('mode', modeInput.value || 'auto');
       body.set('preserveText', preserveTextInput.checked ? 'true' : 'false');
+      body.set('preserveLogos', preserveLogosInput.checked ? 'true' : 'false');
+      body.set('preserveTextContainers', preserveContainersInput.checked ? 'true' : 'false');
     }
+
+    previewBg.addEventListener('click', (event) => {
+      const button = event.target.closest('button[data-bg]');
+      if (!button) return;
+      const bg = button.getAttribute('data-bg');
+      resultFrame.className = 'frame ' + (bg === 'white' ? 'bg-white' : bg === 'black' ? 'bg-black' : bg === 'color' ? 'bg-color' : 'checker');
+      previewBg.querySelectorAll('button').forEach((el) => el.classList.toggle('active', el === button));
+    });
 
     async function retryOne(item) {
       const key = keyInput.value.trim();
@@ -1140,9 +1193,11 @@ export function renderIndexPage(env: Env): string {
           for (const result of payload.data.items || []) {
             const item = batchItems[result.index];
             if (!item) continue;
-            if (result.status === 'completed') {
-              item.status = 'completed';
-              item.message = result.textPreserved ? 'Completed · text kept' : 'Completed';
+            if (result.status === 'completed' || result.status === 'needs_review') {
+              item.status = result.status;
+              item.message = result.status === 'needs_review'
+                ? 'Needs review'
+                : result.textPreserved ? 'Completed · text kept' : 'Completed';
               item.url = result.result.url;
             } else {
               item.status = 'failed';

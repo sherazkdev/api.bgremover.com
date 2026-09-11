@@ -7,21 +7,36 @@ import type {
 
 export type { OutputFormat, QualityMode, RemovalMode, ResponseMode };
 
-export type BulkItemStatus = 'completed' | 'failed';
+export type BulkItemStatus = 'completed' | 'needs_review' | 'failed';
+
+export interface RemovalPreservationOptions {
+  preserveText?: boolean;
+  preserveLogos?: boolean;
+  preserveTextContainers?: boolean;
+}
 
 export interface RemoveBackgroundOptions {
   format: OutputFormat;
   quality: QualityMode;
   responseMode: ResponseMode;
   mode: RemovalMode;
-  preserveText: boolean;
+  preserveText?: boolean;
+  preserveLogos?: boolean;
+  preserveTextContainers?: boolean;
 }
 
 export interface RemoveBackgroundsOptions {
   format: OutputFormat;
   quality: QualityMode;
   mode: RemovalMode;
-  preserveText: boolean;
+  preserveText?: boolean;
+  preserveLogos?: boolean;
+  preserveTextContainers?: boolean;
+  imageOptions?: string;
+}
+
+export interface PerImageRemovalOptions extends RemovalPreservationOptions {
+  mode?: RemovalMode;
 }
 
 export interface ImageAsset {
@@ -36,13 +51,20 @@ export interface ProcessedImageAsset extends ImageAsset {
   hasTransparency: boolean;
 }
 
+export type ProcessingStatus = 'completed' | 'needs_review' | 'failed';
+
 export interface ProcessingInfo {
   model: string;
   quality: QualityMode;
   durationMs: number;
   mode: RemovalMode;
+  appliedMode: RemovalMode;
+  status: ProcessingStatus;
   preserveText: boolean;
+  preserveLogos: boolean;
+  preserveTextContainers: boolean;
   textPreserved: boolean;
+  needsReview: boolean;
 }
 
 export interface RemoveBackgroundResult {
@@ -72,8 +94,9 @@ export interface BulkCompletedItem
   > {
   index: number;
   filename: string;
-  status: 'completed';
+  status: 'completed' | 'needs_review';
   textPreserved: boolean;
+  needsReview: boolean;
   resultBuffer?: Buffer;
 }
 

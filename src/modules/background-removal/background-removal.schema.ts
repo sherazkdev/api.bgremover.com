@@ -26,6 +26,10 @@ export const removeBackgroundFieldsSchema = z
     mode: z.enum(REMOVAL_MODES).default(DEFAULT_REMOVAL_MODE),
     preserveText: booleanish,
     preserve_text: booleanish,
+    preserveLogos: booleanish,
+    preserve_logos: booleanish,
+    preserveTextContainers: booleanish,
+    preserve_text_containers: booleanish,
   })
   .transform((value) => ({
     format: value.format ?? value.output_format ?? DEFAULT_OUTPUT_FORMAT,
@@ -35,6 +39,11 @@ export const removeBackgroundFieldsSchema = z
     preserveText: parseBooleanField(
       value.preserveText ?? value.preserve_text,
       DEFAULT_PRESERVE_TEXT,
+    ),
+    preserveLogos: parseBooleanField(value.preserveLogos ?? value.preserve_logos, true),
+    preserveTextContainers: parseBooleanField(
+      value.preserveTextContainers ?? value.preserve_text_containers,
+      true,
     ),
   }));
 
@@ -46,6 +55,11 @@ export const removeBackgroundsFieldsSchema = z
     mode: z.enum(REMOVAL_MODES).default(DEFAULT_REMOVAL_MODE),
     preserveText: booleanish,
     preserve_text: booleanish,
+    preserveLogos: booleanish,
+    preserve_logos: booleanish,
+    preserveTextContainers: booleanish,
+    preserve_text_containers: booleanish,
+    imageOptions: z.string().optional(),
   })
   .transform((value) => ({
     format: value.format ?? value.output_format ?? DEFAULT_OUTPUT_FORMAT,
@@ -55,6 +69,12 @@ export const removeBackgroundsFieldsSchema = z
       value.preserveText ?? value.preserve_text,
       DEFAULT_PRESERVE_TEXT,
     ),
+    preserveLogos: parseBooleanField(value.preserveLogos ?? value.preserve_logos, true),
+    preserveTextContainers: parseBooleanField(
+      value.preserveTextContainers ?? value.preserve_text_containers,
+      true,
+    ),
+    ...(value.imageOptions ? { imageOptions: value.imageOptions } : {}),
   }));
 
 export const imageAssetSchema = z.object({
@@ -77,7 +97,11 @@ export const removeBackgroundDataSchema = z.object({
     durationMs: z.number().nonnegative(),
     mode: z.enum(REMOVAL_MODES),
     preserveText: z.boolean(),
+    preserveLogos: z.boolean(),
+    preserveTextContainers: z.boolean(),
     textPreserved: z.boolean(),
+    needsReview: z.boolean(),
+    appliedMode: z.enum(REMOVAL_MODES),
   }),
   createdAt: z.iso.datetime(),
 });
@@ -131,14 +155,25 @@ export const removeBackgroundOpenApiBody = {
       enum: modeEnum,
       default: DEFAULT_REMOVAL_MODE,
       description:
-        'auto chooses person cutout or graphic preservation. person and product keep the subject. document and graphic keep text, badges, and design overlays.',
+        'auto uses BiRefNet for people/products/objects and Graphic Cutout for text-heavy posters. text_background removes backgrounds behind lettering while keeping the original raster text. document, graphic, and screenshot use Graphic Cutout.',
     },
     preserveText: {
       type: 'string',
       enum: ['true', 'false'],
       default: 'true',
       description:
-        'When true (default), detected text, logos, badges, and foreground graphics are fused into the alpha mask.',
+        'When true (default), detected text is fused into the alpha mask during person/object cutouts.',
+    },
+    preserveLogos: {
+      type: 'string',
+      enum: ['true', 'false'],
+      description: 'Preserve detected logos and badges. Defaults to true except in text_background mode.',
+    },
+    preserveTextContainers: {
+      type: 'string',
+      enum: ['true', 'false'],
+      description:
+        'Preserve colored text cards, ribbons, and labels. Defaults to false in text_background mode.',
     },
   },
 } as const;
@@ -188,14 +223,31 @@ const resultAssetOpenApi = {
 
 const itemProcessingOpenApi = {
   type: 'object',
-  required: ['model', 'quality', 'durationMs', 'mode', 'preserveText', 'textPreserved'],
+  required: [
+    'model',
+    'quality',
+    'durationMs',
+    'mode',
+    'appliedMode',
+    'status',
+    'preserveText',
+    'preserveLogos',
+    'preserveTextContainers',
+    'textPreserved',
+    'needsReview',
+  ],
   properties: {
     model: { type: 'string' },
     quality: { type: 'string', enum: qualityEnum },
     durationMs: { type: 'number' },
     mode: { type: 'string', enum: modeEnum },
+    appliedMode: { type: 'string', enum: modeEnum },
+    status: { type: 'string', enum: ['completed', 'needs_review', 'failed'] },
     preserveText: { type: 'boolean' },
+    preserveLogos: { type: 'boolean' },
+    preserveTextContainers: { type: 'boolean' },
     textPreserved: { type: 'boolean' },
+    needsReview: { type: 'boolean' },
   },
 } as const;
 
@@ -225,7 +277,8 @@ const bulkItemOpenApi = {
   properties: {
     index: { type: 'integer' },
     filename: { type: 'string' },
-    status: { type: 'string', enum: ['completed', 'failed'] },
+    status: { type: 'string', enum: ['completed', 'needs_review', 'failed'] },
+    needsReview: { type: 'boolean' },
     id: { type: 'string', format: 'uuid' },
     original: imageAssetOpenApi,
     result: resultAssetOpenApi,

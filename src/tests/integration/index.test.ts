@@ -16,7 +16,8 @@ describe('GET /', () => {
       expect(response.body).toContain('Quick Integration');
       expect(response.body).toContain('Remove backgrounds with one API call');
       expect(response.body).toContain('Batch up to');
-      expect(response.body).toContain('Preserve text, logos, and foreground graphics');
+      expect(response.body).toContain('Text background removal');
+      expect(response.body).toContain('Preserve logos and stickers');
       expect(response.body).toContain('Select up to');
       expect(response.body).toContain('Download All');
       expect(response.headers['strict-transport-security']).toBeUndefined();

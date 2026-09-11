@@ -1,7 +1,15 @@
-import type { OutputFormat, QualityMode, RemovalMode } from '../../config/constants.js';
+import {
+  MODEL_DISPLAY_NAME_GRAPHIC,
+  type OutputFormat,
+  type QualityMode,
+  type RemovalMode,
+} from '../../config/constants.js';
 import type { InferenceWorker } from '../../infrastructure/ai/inference-worker.js';
+import type { AlphaMatte } from '../../infrastructure/ai/types.js';
 import type { ModelManager } from '../../infrastructure/ai/model-manager.js';
 import { ForegroundPreserver } from '../../infrastructure/cv/foreground-preservation.js';
+import { shouldRouteToGraphicModel } from '../../infrastructure/cv/mask-fusion.js';
+import type { PreservationOptions } from '../../infrastructure/cv/preservation-options.js';
 import type { FusedForeground } from '../../infrastructure/cv/types.js';
 import type { ImageProcessor } from '../../infrastructure/image/image.processor.js';
 import { cropLetterboxMask } from '../../infrastructure/image/letterbox.js';
@@ -14,7 +22,7 @@ export interface RemovalProcessInput {
   quality: QualityMode;
   format: OutputFormat;
   mode: RemovalMode;
-  preserveText: boolean;
+  preservation: PreservationOptions;
 }
 
 export interface RemovalProcessOutput {
@@ -27,7 +35,10 @@ export interface RemovalProcessOutput {
   modelName: string;
   mode: RemovalMode;
   preserveText: boolean;
+  preserveLogos: boolean;
+  preserveTextContainers: boolean;
   textPreserved: boolean;
+  needsReview: boolean;
   subjectCoverage: number;
   overlayCoverage: number;
   usedGraphicFallback: boolean;
@@ -46,43 +57,61 @@ export class BackgroundRemovalProcessor {
     const provider = this.modelManager.getProvider();
 
     const rgb = input.orientedRgb ?? (await this.decodeRgb(input.orientedBuffer));
-    const overlayPromise = this.foregroundPreserver.detectIfNeeded(
+    const overlays = await this.foregroundPreserver.detectIfNeeded(
       rgb,
       input.width,
       input.height,
       input.mode,
-      input.preserveText,
+      input.preservation,
+    );
+    const useGraphicModel = shouldRouteToGraphicModel(
+      input.mode,
+      overlays,
+      rgb,
+      input.width,
+      input.height,
     );
 
-    const modelInput = await this.imageProcessor.prepareModelInput(
-      { rgb, width: input.width, height: input.height },
-      input.quality,
-      provider.inputWidth,
-      provider.inputHeight,
-    );
+    let subject: AlphaMatte = {
+      data: new Uint8Array(input.width * input.height),
+      width: input.width,
+      height: input.height,
+    };
+    let inferenceMs = 0;
+    let modelName = MODEL_DISPLAY_NAME_GRAPHIC;
 
-    const inference = await this.inferenceWorker.run({
-      pixels: modelInput.pixels,
-      width: modelInput.width,
-      height: modelInput.height,
-      quality: input.quality,
-      originalWidth: input.width,
-      originalHeight: input.height,
-    });
-
-    const cropped = cropLetterboxMask(inference.matte.data, {
-      ...modelInput.letterbox,
-      canvasWidth: inference.matte.width,
-      canvasHeight: inference.matte.height,
-    });
+    if (!useGraphicModel) {
+      const modelInput = await this.imageProcessor.prepareModelInput(
+        { rgb, width: input.width, height: input.height },
+        input.quality,
+        provider.inputWidth,
+        provider.inputHeight,
+      );
+      const inference = await this.inferenceWorker.run({
+        pixels: modelInput.pixels,
+        width: modelInput.width,
+        height: modelInput.height,
+        quality: input.quality,
+        originalWidth: input.width,
+        originalHeight: input.height,
+      });
+      subject = cropLetterboxMask(inference.matte.data, {
+        ...modelInput.letterbox,
+        canvasWidth: inference.matte.width,
+        canvasHeight: inference.matte.height,
+      });
+      inferenceMs = inference.inferenceMs;
+      modelName = provider.displayName;
+    }
 
     const preserved = await this.foregroundPreserver.fuse(
-      cropped,
-      await overlayPromise,
+      subject,
+      overlays,
+      rgb,
       input.width,
       input.height,
       input.mode,
-      input.preserveText,
+      input.preservation,
     );
 
     const composed = await this.imageProcessor.applySoftAlphaMask({
@@ -101,8 +130,8 @@ export class BackgroundRemovalProcessor {
 
     return {
       ...composed,
-      inferenceMs: inference.inferenceMs,
-      modelName: provider.displayName,
+      inferenceMs,
+      modelName,
       ...preservationMeta(input, preserved),
     };
   }
@@ -120,15 +149,21 @@ function preservationMeta(
   RemovalProcessOutput,
   | 'mode'
   | 'preserveText'
+  | 'preserveLogos'
+  | 'preserveTextContainers'
   | 'textPreserved'
+  | 'needsReview'
   | 'subjectCoverage'
   | 'overlayCoverage'
   | 'usedGraphicFallback'
 > {
   return {
     mode: input.mode,
-    preserveText: input.preserveText,
+    preserveText: input.preservation.preserveText,
+    preserveLogos: input.preservation.preserveLogos,
+    preserveTextContainers: input.preservation.preserveTextContainers,
     textPreserved: preserved.textPreserved,
+    needsReview: preserved.needsReview,
     subjectCoverage: preserved.subjectCoverage,
     overlayCoverage: preserved.overlayCoverage,
     usedGraphicFallback: preserved.usedGraphicFallback,

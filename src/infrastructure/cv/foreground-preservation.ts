@@ -4,6 +4,11 @@ import type { RemovalMode } from '../../config/constants.js';
 import type { AlphaMatte } from '../ai/types.js';
 import { fuseForegroundMasks } from './mask-fusion.js';
 import { detectOverlays } from './overlay-detector.js';
+import {
+  type PreservationOptions,
+  resolvePreservationOptions,
+  type PreservationInput,
+} from './preservation-options.js';
 import type { FusedForeground } from './types.js';
 
 export interface PreserveForegroundInput {
@@ -12,7 +17,7 @@ export interface PreserveForegroundInput {
   height: number;
   subjectMatte: AlphaMatte;
   mode: RemovalMode;
-  preserveText: boolean;
+  preservation: PreservationOptions;
 }
 
 export class ForegroundPreserver {
@@ -21,10 +26,21 @@ export class ForegroundPreserver {
     width: number,
     height: number,
     mode: RemovalMode,
-    preserveText: boolean,
+    preservation: PreservationOptions,
   ): Promise<Awaited<ReturnType<typeof detectOverlays>> | null> {
-    if (!preserveText && (mode === 'person' || mode === 'product')) {
-      return Promise.resolve(null);
+    if (
+      mode === 'text_background' ||
+      mode === 'graphic' ||
+      mode === 'document' ||
+      mode === 'screenshot' ||
+      preservation.preserveText
+    ) {
+      return detectOverlays(rgb, width, height);
+    }
+    if (mode === 'person' || mode === 'product' || mode === 'object') {
+      return preservation.preserveText || preservation.preserveLogos
+        ? detectOverlays(rgb, width, height)
+        : Promise.resolve(null);
     }
     return detectOverlays(rgb, width, height);
   }
@@ -32,10 +48,11 @@ export class ForegroundPreserver {
   public async fuse(
     subjectMatte: AlphaMatte,
     overlays: Awaited<ReturnType<typeof detectOverlays>> | null,
+    rgb: Uint8Array,
     width: number,
     height: number,
     mode: RemovalMode,
-    preserveText: boolean,
+    preservation: PreservationOptions,
   ): Promise<FusedForeground> {
     const subjectMask = await resizeMaskTo(
       subjectMatte.data,
@@ -47,29 +64,37 @@ export class ForegroundPreserver {
     return fuseForegroundMasks({
       subjectMask,
       overlays: overlays ?? emptyOverlays(subjectMask.length),
+      rgb,
       width,
       height,
       mode,
-      preserveText,
+      preservation,
     });
   }
 
-  public async preserve(input: PreserveForegroundInput): Promise<FusedForeground> {
+  public async preserve(
+    input: PreserveForegroundInput,
+  ): Promise<FusedForeground> {
     const overlays = await this.detectIfNeeded(
       input.rgb,
       input.width,
       input.height,
       input.mode,
-      input.preserveText,
+      input.preservation,
     );
     return this.fuse(
       input.subjectMatte,
       overlays,
+      input.rgb,
       input.width,
       input.height,
       input.mode,
-      input.preserveText,
+      input.preservation,
     );
+  }
+
+  public resolvePreservation(mode: RemovalMode, input: PreservationInput = {}): PreservationOptions {
+    return resolvePreservationOptions(mode, input);
   }
 }
 
@@ -116,6 +141,7 @@ function emptyOverlays(length: number) {
       containerCoverage: 0,
       overlayCoverage: 0,
       nonBackgroundCoverage: 0,
+      isTextHeavy: false,
     },
   };
 }

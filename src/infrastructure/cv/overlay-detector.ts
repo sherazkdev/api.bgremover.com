@@ -9,6 +9,7 @@ import {
   saturation,
   type RgbColor,
 } from './color.js';
+import { isTextHeavyLayout, subtractPaperBackground } from './graphic-matte.js';
 import { closeMask, coverage, dilate, fillSmallHoles, removeSmallComponents } from './morphology.js';
 import type { OverlayMasks } from './types.js';
 
@@ -24,11 +25,16 @@ export async function detectOverlays(
   const maps = buildSignalMaps(work.rgb, work.width, work.height, background, variance);
   const minArea = Math.max(10, Math.round(work.width * work.height * 0.00012));
 
-  const textMask = removeSmallComponents(
-    closeMask(maps.textSeed, work.width, work.height, 1),
+  const textMask = selectTextComponents(
+    removeSmallComponents(
+      closeMask(maps.textSeed, work.width, work.height, 1),
+      work.width,
+      work.height,
+      minArea,
+    ),
+    maps.edges,
     work.width,
     work.height,
-    minArea,
   );
   const graphicMask = removeSmallComponents(
     closeMask(maps.graphicSeed, work.width, work.height, 1),
@@ -44,23 +50,25 @@ export async function detectOverlays(
     background,
     maps.threshold,
   );
-  const logoMask = selectLogoComponents(graphicMask, work.width, work.height);
-  const backgroundSubtract = fillSmallHoles(
-    closeMask(maps.nonBackground, work.width, work.height, 1),
+  const logoMask = selectLogoComponents(graphicMask, textMask, work.width, work.height);
+  const paperKeep = subtractPaperBackground(
+    work.rgb,
     work.width,
     work.height,
-    Math.round(work.width * work.height * 0.01),
+    maps.edges,
+    variance,
+  );
+  const backgroundSubtract = fillSmallHoles(
+    paperKeep,
+    work.width,
+    work.height,
+    Math.max(16, Math.round(work.width * work.height * 0.0004)),
   );
 
-  const pad = adaptivePad(work.width, work.height);
-  const paddedText = dilate(textMask, work.width, work.height, pad);
-  const paddedContainers = dilate(containerMask, work.width, work.height, Math.max(1, pad - 1));
-  const paddedLogos = dilate(logoMask, work.width, work.height, pad);
-
   const [textFull, containerFull, logoFull, bgSubFull] = await Promise.all([
-    resizeMask(paddedText, work.width, work.height, width, height),
-    resizeMask(paddedContainers, work.width, work.height, width, height),
-    resizeMask(paddedLogos, work.width, work.height, width, height),
+    resizeMask(textMask, work.width, work.height, width, height),
+    resizeMask(containerMask, work.width, work.height, width, height),
+    resizeMask(logoMask, work.width, work.height, width, height),
     resizeMask(backgroundSubtract, work.width, work.height, width, height),
   ]);
 
@@ -83,6 +91,14 @@ export async function detectOverlays(
     nonBackgroundCoverage,
     textCoverage,
   });
+  const isTextHeavy = isTextHeavyLayout(
+    overlayUnion,
+    width,
+    height,
+    graphicScore,
+    textCoverage,
+    overlayCoverage,
+  );
 
   return {
     textMask: textFull,
@@ -97,6 +113,7 @@ export async function detectOverlays(
       containerCoverage,
       overlayCoverage,
       nonBackgroundCoverage,
+      isTextHeavy,
     },
   };
 }
@@ -158,6 +175,7 @@ function buildSignalMaps(
   textSeed: Uint8Array;
   graphicSeed: Uint8Array;
   nonBackground: Uint8Array;
+  edges: Uint8Array;
   threshold: number;
 } {
   const pixels = width * height;
@@ -188,15 +206,15 @@ function buildSignalMaps(
     if (farFromBackground) {
       nonBackground[index] = Math.min(255, 90 + distance);
     }
-    if (farFromBackground && (strongEdge || chroma > 0.18)) {
+    if (farFromBackground && strongEdge) {
       textSeed[index] = 255;
     }
-    if (farFromBackground && (chroma > 0.26 || strongEdge)) {
+    if (farFromBackground && chroma > 0.34 && strongEdge) {
       graphicSeed[index] = 255;
     }
   }
 
-  return { textSeed, graphicSeed, nonBackground, threshold };
+  return { textSeed, graphicSeed, nonBackground, edges, threshold };
 }
 
 function expandTextContainers(
@@ -209,7 +227,7 @@ function expandTextContainers(
 ): Uint8Array {
   const output = new Uint8Array(textMask);
   const components = connectedComponents(textMask, width, height, 64);
-  const maxArea = Math.round(width * height * 0.14);
+  const maxArea = Math.round(width * height * 0.06);
 
   for (const component of components) {
     const metrics = componentMetrics(component);
@@ -270,26 +288,73 @@ function expandTextContainers(
   return output;
 }
 
-function selectLogoComponents(mask: Uint8Array, width: number, height: number): Uint8Array {
+function selectTextComponents(
+  mask: Uint8Array,
+  edges: Uint8Array,
+  width: number,
+  height: number,
+): Uint8Array {
+  const output = new Uint8Array(mask.length);
+  const imageArea = width * height;
+  for (const component of connectedComponents(mask, width, height, 64)) {
+    const metrics = componentMetrics(component);
+    const areaRatio = component.area / imageArea;
+    let edgePixels = 0;
+    for (const index of component.indices) {
+      if ((edges[index] ?? 0) > 24) {
+        edgePixels += 1;
+      }
+    }
+    const edgeDensity = edgePixels / Math.max(1, component.area);
+    if (isSolidFurniture(component, metrics, edgeDensity, width, height)) {
+      continue;
+    }
+    const textLike =
+      areaRatio <= 0.08 &&
+      edgeDensity >= 0.18 &&
+      metrics.compactness <= 0.72;
+    const captionLike =
+      areaRatio <= 0.04 &&
+      metrics.height <= Math.max(18, height * 0.12) &&
+      edgeDensity >= 0.28 &&
+      metrics.compactness <= 0.7;
+    if (textLike || captionLike) {
+      for (const index of component.indices) {
+        output[index] = mask[index] ?? 255;
+      }
+    }
+  }
+  return output;
+}
+
+function selectLogoComponents(
+  mask: Uint8Array,
+  textMask: Uint8Array,
+  width: number,
+  height: number,
+): Uint8Array {
   const output = new Uint8Array(mask.length);
   const components = connectedComponents(mask, width, height, 64);
   const imageArea = width * height;
+  const dilatedText = dilate(textMask, width, height, Math.max(3, Math.round(Math.min(width, height) * 0.02)));
 
   for (const component of components) {
     const metrics = componentMetrics(component);
     const areaRatio = component.area / imageArea;
+    const nearTop = component.minY < height * 0.22;
+    const overheadFixture =
+      nearTop &&
+      metrics.compactness >= 0.5 &&
+      (metrics.aspect > 1.55 || areaRatio > 0.01);
     const logoLike =
-      areaRatio >= 0.0008 &&
-      areaRatio <= 0.18 &&
-      metrics.compactness >= 0.22 &&
-      metrics.aspect >= 0.25 &&
-      metrics.aspect <= 4;
-    const badgeLike =
-      areaRatio >= 0.0005 &&
-      areaRatio <= 0.12 &&
-      metrics.width >= 8 &&
-      metrics.height >= 8;
-    if (logoLike || badgeLike) {
+      areaRatio >= 0.0004 &&
+      areaRatio <= 0.035 &&
+      metrics.compactness >= 0.28 &&
+      metrics.aspect >= 0.35 &&
+      metrics.aspect <= 2.2 &&
+      !overheadFixture;
+    const nearText = overlapsMask(component.indices, dilatedText);
+    if (logoLike || (nearText && areaRatio <= 0.02 && !overheadFixture)) {
       for (const index of component.indices) {
         output[index] = mask[index] ?? 255;
       }
@@ -297,6 +362,32 @@ function selectLogoComponents(mask: Uint8Array, width: number, height: number): 
   }
 
   return output;
+}
+
+function isSolidFurniture(
+  component: { minX: number; minY: number; maxX: number; maxY: number; area: number },
+  metrics: { width: number; height: number; aspect: number; compactness: number },
+  edgeDensity: number,
+  _width: number,
+  height: number,
+): boolean {
+  const nearTop = component.minY < height * 0.28;
+  const solid = metrics.compactness >= 0.68 && edgeDensity < 0.32;
+  const topBar =
+    nearTop &&
+    metrics.aspect >= 1.45 &&
+    metrics.compactness >= 0.5 &&
+    edgeDensity < 0.4;
+  return solid || topBar;
+}
+
+function overlapsMask(indices: number[], mask: Uint8Array): boolean {
+  for (const index of indices) {
+    if ((mask[index] ?? 0) > 48) {
+      return true;
+    }
+  }
+  return false;
 }
 
 function sobelMagnitude(gray: Uint8Array, width: number, height: number): Uint8Array {
@@ -350,10 +441,6 @@ function medianColor(rgb: Uint8Array, indices: number[]): RgbColor {
     g: greens[mid] ?? 0,
     b: blues[mid] ?? 0,
   };
-}
-
-function adaptivePad(width: number, height: number): number {
-  return Math.max(1, Math.min(4, Math.round(Math.min(width, height) / 180)));
 }
 
 function computeGraphicScore(input: {

@@ -7,6 +7,8 @@ import sharp from 'sharp';
 import type { OutputFormat, QualityMode } from '../../config/constants.js';
 import { AppError, backgroundRemovalFailedError } from '../../shared/errors/app-error.js';
 import { assertGrayscaleMask, copyUint8, logMaskDiagnostics, minMax, refineAlphaMatte } from '../ai/mask.js';
+import { estimatePaperColors } from '../cv/graphic-matte.js';
+import { defringeAgainstPapers } from '../cv/graphic-matte.js';
 import type { AlphaMatte } from '../ai/types.js';
 import { computeLetterbox, IMAGENET_PAD_RGB, type LetterboxLayout } from './letterbox.js';
 
@@ -129,8 +131,6 @@ export class ImageProcessor {
         .raw()
         .toBuffer({ resolveWithObject: true });
       assertGrayscaleMask(resizedMask, width, height, maskInfo.channels);
-      const refinedMask = Buffer.from(refineAlphaMatte(copyUint8(resizedMask)));
-
       const rgb = providedRgb
         ? { data: providedRgb, info: { width, height, channels: 3 } }
         : await sharp(orientedImage)
@@ -139,6 +139,18 @@ export class ImageProcessor {
             .toColourspace('srgb')
             .raw()
             .toBuffer({ resolveWithObject: true });
+      const rgbBytes = rgb.data instanceof Uint8Array ? rgb.data : new Uint8Array(rgb.data);
+      const { colors: paperColors } = estimatePaperColors(rgbBytes, width, height);
+      const refinedMask = Buffer.from(
+        defringeAgainstPapers(
+          rgbBytes,
+          refineAlphaMatte(copyUint8(resizedMask)),
+          width,
+          height,
+          paperColors,
+          20,
+        ),
+      );
       if (rgb.info.width !== width || rgb.info.height !== height) {
         throw backgroundRemovalFailedError(
           'Oriented image dimensions do not match the mask target',
