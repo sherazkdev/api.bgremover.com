@@ -7,8 +7,6 @@ import sharp from 'sharp';
 import type { OutputFormat, QualityMode, RemovalMode } from '../../config/constants.js';
 import { AppError, backgroundRemovalFailedError } from '../../shared/errors/app-error.js';
 import { assertGrayscaleMask, copyUint8, logMaskDiagnostics, minMax, refineAlphaMatte } from '../ai/mask.js';
-import { estimateBackgroundColor } from '../cv/color.js';
-import { defringeAlpha } from '../cv/defringe.js';
 import { estimatePaperColors } from '../cv/graphic-matte.js';
 import { defringeAgainstPapers } from '../cv/graphic-matte.js';
 import { isGraphicCutoutMode, isSubjectCutoutMode } from '../cv/preservation-options.js';
