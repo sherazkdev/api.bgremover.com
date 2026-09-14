@@ -25,6 +25,7 @@ import {
   BULK_FAILED_MESSAGE,
   BULK_PARTIAL_MESSAGE,
   BULK_SUCCESS_MESSAGE,
+  DEFAULT_PRESERVE_TEXT,
   SUCCESS_MESSAGE,
 } from './background-removal.constants.js';
 import type {
@@ -174,7 +175,7 @@ export class BackgroundRemovalService {
       zip,
       quality: options.quality,
       mode: options.mode,
-      preserveText: options.preserveText ?? true,
+      preserveText: options.preserveText ?? DEFAULT_PRESERVE_TEXT,
     };
   }
 

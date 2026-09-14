@@ -7,6 +7,8 @@ import sharp from 'sharp';
 import type { OutputFormat, QualityMode, RemovalMode } from '../../config/constants.js';
 import { AppError, backgroundRemovalFailedError } from '../../shared/errors/app-error.js';
 import { assertGrayscaleMask, copyUint8, logMaskDiagnostics, minMax, refineAlphaMatte } from '../ai/mask.js';
+import { estimateBackgroundColor } from '../cv/color.js';
+import { defringeAlpha } from '../cv/defringe.js';
 import { estimatePaperColors } from '../cv/graphic-matte.js';
 import { defringeAgainstPapers } from '../cv/graphic-matte.js';
 import { isGraphicCutoutMode, isSubjectCutoutMode } from '../cv/preservation-options.js';
@@ -188,7 +190,12 @@ export class ImageProcessor {
       const rgbBytes = rgb.data instanceof Uint8Array ? rgb.data : new Uint8Array(rgb.data);
       let refinedMask: Buffer;
       if (subjectCutout) {
-        refinedMask = Buffer.from(refineAlphaMatte(copyUint8(resizedMask)));
+        let mask = refineAlphaMatte(copyUint8(resizedMask));
+        const { color: background, variance } = estimateBackgroundColor(rgbBytes, width, height);
+        if (variance < 22) {
+          mask = Buffer.from(defringeAlpha(rgbBytes, mask, width, height, background, 26));
+        }
+        refinedMask = Buffer.from(mask);
       } else {
         const { colors: paperColors } = estimatePaperColors(rgbBytes, width, height);
         refinedMask = Buffer.from(

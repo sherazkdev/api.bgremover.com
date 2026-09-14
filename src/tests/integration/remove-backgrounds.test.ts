@@ -100,7 +100,7 @@ describe('POST /api/v1/remove-backgrounds', () => {
       expect(body.data.failed).toBe(0);
       expect(body.data.processing.quality).toBe('hd');
       expect(body.data.processing.mode).toBe('auto');
-      expect(body.data.processing.preserveText).toBe(true);
+      expect(body.data.processing.preserveText).toBe(false);
       expect(body.data.zip?.url).toContain('/uploads/archives/');
       expect(body.data.zip?.mimeType).toBe('application/zip');
       expect(body.data.items).toHaveLength(3);

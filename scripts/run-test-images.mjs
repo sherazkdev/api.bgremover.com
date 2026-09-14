@@ -249,7 +249,7 @@ try {
     const multipart = createMultipartPayload({
       fields: {
         format: 'png',
-        quality: 'fast',
+        quality: 'hd',
         responseMode: 'json',
         mode: req.mode,
         preserveText: req.preserveText,

@@ -23,7 +23,7 @@ export async function registerSwagger(app: FastifyInstance, env: Env): Promise<v
           `| POST | ${env.API_PREFIX}/remove-background | x-api-key | Single image, transparent PNG/WebP |`,
           `| POST | ${env.API_PREFIX}/remove-backgrounds | x-api-key | Batch of 1–${env.MAX_BULK_IMAGES} images, per-item status + ZIP |`,
           '',
-          '`preserveText` defaults to true so text, logos, and badges stay in the cutout.',
+          '`preserveText` defaults to false for photo cutouts; set true to keep captions, logos, and badges.',
         ].join('\n'),
       },
       servers: [

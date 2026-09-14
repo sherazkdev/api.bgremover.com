@@ -102,7 +102,7 @@ Requires header `x-api-key`. `multipart/form-data` with a single image.
 | `quality`       |       no | `fast`, `hd`                                | `hd`    |
 | `responseMode`  |       no | `json`, `binary`                            | `json`  |
 | `mode`          |       no | `auto`, `person`, `product`, `document`, `graphic` | `auto` |
-| `preserveText`  |       no | `true`, `false`                             | `true`  |
+| `preserveText`  |       no | `true`, `false`                             | `false` |
 
 `quality=fast` uses the model’s normal input path. `quality=hd` uses higher-quality Sharp resampling for the model input and alpha mask. It does not upscale the final image.
 
@@ -141,7 +141,7 @@ Requires header `x-api-key`. `multipart/form-data` with one or more images. Each
 | `format`       |       no | `png`, `webp`                               | `png`   |
 | `quality`      |       no | `fast`, `hd`                                | `hd`    |
 | `mode`         |       no | `auto`, `person`, `product`, `document`, `graphic` | `auto` |
-| `preserveText` |       no | `true`, `false`                             | `true`  |
+| `preserveText` |       no | `true`, `false`                             | `false` |
 
 Repeat `images` (or `image`) once per file. Response is always JSON with public URLs, in upload order.
 

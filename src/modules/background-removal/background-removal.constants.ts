@@ -15,7 +15,7 @@ export const DEFAULT_OUTPUT_FORMAT = OUTPUT_FORMATS[0];
 export const DEFAULT_QUALITY = QUALITY_MODES[1];
 export const DEFAULT_RESPONSE_MODE = RESPONSE_MODES[0];
 export const DEFAULT_REMOVAL_MODE = REMOVAL_MODES[0];
-export const DEFAULT_PRESERVE_TEXT = true;
+export const DEFAULT_PRESERVE_TEXT = false;
 
 export const SUCCESS_MESSAGE = 'Background removed successfully';
 export const BULK_SUCCESS_MESSAGE = 'Backgrounds removed successfully';

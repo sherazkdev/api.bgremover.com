@@ -151,6 +151,7 @@ describe('text and overlay preservation', () => {
   ] as const)('keeps a %s text card', async (_label, factory, filename) => {
     const { response, env, cleanup } = await processImage(await factory(), filename, 'image/png', {
       mode: 'graphic',
+      preserveText: 'true',
     });
     try {
       expect(response.statusCode).toBe(200);
@@ -172,7 +173,7 @@ describe('text and overlay preservation', () => {
       await createGraphicPoster(),
       'poster.jpg',
       'image/jpeg',
-      { mode: 'auto' },
+      { mode: 'auto', preserveText: 'true' },
       provider,
     );
     try {
@@ -197,7 +198,7 @@ describe('text and overlay preservation', () => {
       await createSemiTransparentOverlay(),
       'overlay.png',
       'image/png',
-      { mode: 'graphic' },
+      { mode: 'graphic', preserveText: 'true' },
     );
     try {
       expect(overlay.response.statusCode).toBe(200);
@@ -277,7 +278,7 @@ describe('text and overlay preservation', () => {
       expect(body.data.result.width).toBe(body.data.original.width);
       expect(body.data.result.height).toBe(body.data.original.height);
       expect(body.data.processing.textPreserved).toBe(true);
-      expect(body.data.processing.model).toBe('Graphic Cutout');
+      expect(body.data.processing.model).toBe('BiRefNet Lite');
       const stats = await alphaStats(
         path.join(env.UPLOAD_ROOT, new URL(body.data.result.url).pathname.replace(/^\/uploads\//, '')),
       );

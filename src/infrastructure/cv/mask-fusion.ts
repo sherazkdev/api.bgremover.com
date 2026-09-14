@@ -110,7 +110,7 @@ export function fuseForegroundMasks(input: {
       fused,
       input.width,
       input.height,
-      Math.round(input.width * input.height * 0.008),
+      Math.round(input.width * input.height * 0.011),
     );
     fused = pruneDetachedBackground(fused, {
       ...input,

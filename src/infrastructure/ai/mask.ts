@@ -84,6 +84,40 @@ export function refineAlphaMatte(data: Uint8Array): Uint8Array {
   return refined;
 }
 
+/** Light 3×3 smooth on semi-transparent edge pixels (keeps hair/straps less jagged). */
+export function softenAlphaEdges(
+  alpha: Uint8Array,
+  width: number,
+  height: number,
+): Uint8Array {
+  if (width < 3 || height < 3) {
+    return new Uint8Array(alpha);
+  }
+  const output = new Uint8Array(alpha);
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      const index = y * width + x;
+      const value = alpha[index] ?? 0;
+      if (value <= 8 || value >= 248) {
+        output[index] = value;
+        continue;
+      }
+      if (y === 0 || y === height - 1 || x === 0 || x === width - 1) {
+        output[index] = value;
+        continue;
+      }
+      let sum = 0;
+      for (let dy = -1; dy <= 1; dy += 1) {
+        for (let dx = -1; dx <= 1; dx += 1) {
+          sum += alpha[(y + dy) * width + (x + dx)] ?? 0;
+        }
+      }
+      output[index] = Math.round(sum / 9);
+    }
+  }
+  return output;
+}
+
 export function logMaskDiagnostics(label: string, info: Record<string, unknown>): void {
   if (process.env.DEBUG_BG_MASK !== '1') {
     return;

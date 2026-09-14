@@ -1,4 +1,4 @@
-import { refineAlphaMatte } from '../ai/mask.js';
+import { refineAlphaMatte, softenAlphaEdges } from '../ai/mask.js';
 import {
   chebyshev,
   estimateBackgroundColor,
@@ -23,7 +23,11 @@ export function refinePersonMatte(
     : Math.max(64, Math.round(width * height * 0.00045));
   let refined = peelBackgroundLikeTopBand(rgb, alpha, width, height, background);
   if (greenScreenLike(background)) {
+    const beforeGreenPeel = refined;
     refined = peelGreenScreenSpill(rgb, refined, width, height, background);
+    if (coverage(refined, 128) < 0.02) {
+      refined = beforeGreenPeel;
+    }
   }
   if (coverage(alpha, 128) > 0.28) {
     refined = shrinkBloatedForeground(rgb, refined, width, height, background);
@@ -43,6 +47,9 @@ export function refinePersonMatte(
       background,
       greenScreenLike(background) ? 34 : 28,
     );
+  }
+  if (!outdoorLike) {
+    refined = softenAlphaEdges(refined, width, height);
   }
   refined = refineAlphaMatte(refined);
   return refined;

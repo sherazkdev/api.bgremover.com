@@ -21,7 +21,7 @@ export async function createPng(width = 64, height = 48): Promise<Buffer> {
       width,
       height,
       channels: 3,
-      background: { r: 40, g: 180, b: 80 },
+      background: { r: 220, g: 40, b: 80 },
     },
   })
     .png()
