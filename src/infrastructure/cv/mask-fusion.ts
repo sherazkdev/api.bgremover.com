@@ -192,6 +192,9 @@ export function shouldUseGraphicPath(input: {
   if (input.subjectCoverage >= SUBJECT_LOCK_COVERAGE) {
     return false;
   }
+  if (input.textHeavy && input.subjectCoverage >= 0.06) {
+    return false;
+  }
   if (input.textHeavy) {
     return true;
   }

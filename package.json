@@ -21,6 +21,8 @@
     "test:coverage": "vitest run --coverage",
     "test:e2e": "vitest run --config vitest.e2e.config.ts",
     "test:images": "tsx scripts/run-test-images.mjs",
+    "test:images:generate": "tsx scripts/generate-test-images.mjs",
+    "test:images:full": "npm run test:images:generate && npm run test:images",
     "train:bootstrap": "node training/bootstrap-teacher.mjs",
     "train:matte": "node training/train_matte_refiner.mjs"
   },

@@ -104,6 +104,19 @@ describe('mask fusion', () => {
     ).toBe(false);
   });
 
+  it('keeps BiRefNet for text-heavy auto layouts when a small subject is present', () => {
+    expect(
+      shouldUseGraphicPath({
+        mode: 'auto',
+        subjectCoverage: 0.08,
+        overlayCoverage: 0.2,
+        graphicScore: 0.7,
+        nonBackgroundCoverage: 0.45,
+        textHeavy: true,
+      }),
+    ).toBe(false);
+  });
+
   it('uses the graphic path for text-heavy auto layouts without a subject', () => {
     expect(
       shouldUseGraphicPath({
@@ -121,7 +134,7 @@ describe('mask fusion', () => {
     const width = 16;
     const height = 16;
     const subject = new Uint8Array(width * height);
-    fillRect(subject, width, 0, 0, 15, 0, 255);
+    fillRect(subject, width, 0, 0, 3, 0, 255);
     const overlay = overlays(width * height);
     fillRect(overlay.backgroundSubtractMask, width, 3, 6, 12, 12, 255);
     fillRect(overlay.textMask, width, 3, 6, 12, 9, 255);

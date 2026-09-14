@@ -22,6 +22,9 @@ export function refinePersonMatte(
     ? Math.max(256, Math.round(width * height * 0.0012))
     : Math.max(64, Math.round(width * height * 0.00045));
   let refined = peelBackgroundLikeTopBand(rgb, alpha, width, height, background);
+  if (greenScreenLike(background)) {
+    refined = peelGreenScreenSpill(rgb, refined, width, height, background);
+  }
   if (coverage(alpha, 128) > 0.28) {
     refined = shrinkBloatedForeground(rgb, refined, width, height, background);
   }
@@ -31,20 +34,47 @@ export function refinePersonMatte(
   }
   refined = restoreHairAgainstBackground(rgb, refined, width, height, background);
   refined = fillInteriorBackgroundHoles(refined, width, height, holeLimit);
-  const greenScreenLike =
-    background.g > background.r + 18 && background.g > background.b + 12;
-  if (!outdoorLike || greenScreenLike) {
+  if (!outdoorLike || greenScreenLike(background)) {
     refined = defringeAlpha(
       rgb,
       refined,
       width,
       height,
       background,
-      greenScreenLike ? 34 : 28,
+      greenScreenLike(background) ? 34 : 28,
     );
   }
   refined = refineAlphaMatte(refined);
   return refined;
+}
+
+function greenScreenLike(background: RgbColor): boolean {
+  return background.g > background.r + 15 && background.g > background.b + 15;
+}
+
+function peelGreenScreenSpill(
+  rgb: Uint8Array,
+  alpha: Uint8Array,
+  _width: number,
+  _height: number,
+  background: RgbColor,
+): Uint8Array {
+  const output = new Uint8Array(alpha);
+  for (let index = 0; index < alpha.length; index += 1) {
+    const value = alpha[index] ?? 0;
+    if (value < 48) {
+      output[index] = value;
+      continue;
+    }
+    const color = readRgb(rgb, index);
+    const greenDominant = color.g > color.r + 8 && color.g > color.b + 8;
+    if (greenDominant && chebyshev(color, background) < 52) {
+      output[index] = 0;
+      continue;
+    }
+    output[index] = value;
+  }
+  return output;
 }
 
 function peelBackgroundLikeTopBand(
@@ -96,7 +126,9 @@ function isPersonSeedPixel(rgb: Uint8Array, index: number, background: RgbColor)
   }
   const skinLike = sat > 0.05 && sat < 0.62 && lum > 30 && lum < 240;
   const hairLike = lum < 108 && sat < 0.4;
-  const clothLike = sat > 0.12 || lum < 72 || lum > 165;
+  const clothLike =
+    !isBackgroundColoredPixel(rgb, index, background) &&
+    (sat > 0.12 || lum < 72 || (lum > 165 && sat > 0.08));
   return skinLike || hairLike || clothLike;
 }
 

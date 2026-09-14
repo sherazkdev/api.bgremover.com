@@ -23,7 +23,77 @@ function sample(alpha, width, x, y) {
   return alpha[sy * width + sx] ?? 0;
 }
 
-function evaluateAlpha(alpha, width, height) {
+function expectedProfile(fileName) {
+  const base = fileName.toLowerCase();
+  if (base.includes('synth-banner')) {
+    return {
+      kind: 'banner',
+      minTransparent: 0.35,
+      maxOpaque: 0.55,
+      maxPhotoPaneMean: 85,
+    };
+  }
+  if (base.includes('synth-green-product') || base === '2.webp') {
+    return {
+      kind: 'portrait',
+      minTransparent: 0.45,
+      maxOpaque: 0.35,
+      maxSideMean: 80,
+      minCenter: 200,
+      maxBorderMean: 48,
+      maxCorner: 200,
+    };
+  }
+  if (base.includes('synth-studio') || base.includes('synth-white') || base.includes('synth-tall-kurta')) {
+    return {
+      kind: 'portrait',
+      minTransparent: 0.28,
+      maxOpaque: 0.42,
+      maxSideMean: 45,
+      minCenter: 180,
+      maxBorderMean: 48,
+      maxCorner: 200,
+    };
+  }
+  if (base.includes('synth-green-screen')) {
+    return {
+      kind: 'portrait',
+      minTransparent: 0.55,
+      maxOpaque: 0.35,
+      maxSideMean: 40,
+      minCenter: 180,
+      maxBorderMean: 48,
+      maxCorner: 200,
+    };
+  }
+  return {
+    kind: 'portrait',
+    minTransparent: 0.08,
+    maxOpaque: 0.42,
+    maxSideMean: 52,
+    minCenter: 80,
+    maxBorderMean: 48,
+    maxCorner: 200,
+  };
+}
+
+function photoPaneMean(alpha, width, height) {
+  let sum = 0;
+  let count = 0;
+  const x0 = Math.floor(width * 0.52);
+  const x1 = Math.floor(width * 0.96);
+  const y0 = Math.floor(height * 0.08);
+  const y1 = Math.floor(height * 0.92);
+  for (let y = y0; y <= y1; y += 1) {
+    for (let x = x0; x <= x1; x += 1) {
+      sum += sample(alpha, width, x, y);
+      count += 1;
+    }
+  }
+  return count > 0 ? sum / count : 255;
+}
+
+function evaluateAlpha(alpha, width, height, fileName) {
   let transparent = 0;
   let opaque = 0;
   for (const value of alpha) {
@@ -42,10 +112,8 @@ function evaluateAlpha(alpha, width, height) {
   const center = sample(alpha, width, Math.floor(width / 2), Math.floor(height / 2));
   const centerUpper = sample(alpha, width, Math.floor(width / 2), Math.floor(height * 0.42));
 
-  const issues = [];
-  if (transparentRatio < 0.08) issues.push('background not removed (low transparency)');
-  if (opaqueRatio < 0.04) issues.push('subject missing (too transparent)');
-  if (opaqueRatio > 0.42) issues.push('mask too large (background kept as foreground)');
+  const profile = expectedProfile(fileName);
+
   const sideBand = Math.max(2, Math.round(width * 0.08));
   let sideSum = 0;
   let sideCount = 0;
@@ -57,9 +125,6 @@ function evaluateAlpha(alpha, width, height) {
     }
   }
   const sideMean = sideCount > 0 ? sideSum / sideCount : 0;
-  if (sideMean > 52) issues.push('left/right edges still foreground');
-  if (cornerMax > 200) issues.push('corners still opaque');
-  if (center < 80 && centerUpper < 80) issues.push('center not solid (holes in subject)');
 
   const borderBandX = Math.max(2, Math.round(width * 0.04));
   const borderBandY = Math.max(2, Math.round(height * 0.04));
@@ -78,13 +143,45 @@ function evaluateAlpha(alpha, width, height) {
     }
   }
   const borderMean = borderCount > 0 ? borderSum / borderCount : 0;
-  if (borderMean > 48) issues.push('outer frame still foreground');
+
+  const issues = [];
+  if (transparentRatio < profile.minTransparent) {
+    issues.push('background not removed (low transparency)');
+  }
+  if (opaqueRatio < 0.04) issues.push('subject missing (too transparent)');
+  if (opaqueRatio > profile.maxOpaque) issues.push('mask too large (background kept as foreground)');
+
+  if (profile.kind === 'banner') {
+    const paneMean = photoPaneMean(alpha, width, height);
+    if (paneMean > profile.maxPhotoPaneMean) {
+      issues.push('photo pane still mostly foreground');
+    }
+    return {
+      transparentRatio: Number(transparentRatio.toFixed(4)),
+      opaqueRatio: Number(opaqueRatio.toFixed(4)),
+      cornerMax,
+      center,
+      sideMean: Number(sideMean.toFixed(1)),
+      borderMean: Number(borderMean.toFixed(1)),
+      photoPaneMean: Number(paneMean.toFixed(1)),
+      ok: issues.length === 0,
+      issues,
+    };
+  }
+
+  if (sideMean > profile.maxSideMean) issues.push('left/right edges still foreground');
+  if (cornerMax > profile.maxCorner) issues.push('corners still opaque');
+  if (center < profile.minCenter && centerUpper < profile.minCenter) {
+    issues.push('center not solid (holes in subject)');
+  }
+  if (borderMean > profile.maxBorderMean) issues.push('outer frame still foreground');
 
   return {
     transparentRatio: Number(transparentRatio.toFixed(4)),
     opaqueRatio: Number(opaqueRatio.toFixed(4)),
     cornerMax,
     center,
+    sideMean: Number(sideMean.toFixed(1)),
     borderMean: Number(borderMean.toFixed(1)),
     ok: issues.length === 0,
     issues,
@@ -113,6 +210,17 @@ async function magentaPreview(pngPath, previewPath) {
     .toFile(previewPath);
 }
 
+function requestOptionsFor(fileName) {
+  const base = fileName.toLowerCase();
+  if (base.includes('banner')) {
+    return { mode: 'auto', preserveText: 'true' };
+  }
+  if (base.includes('green-product')) {
+    return { mode: 'product', preserveText: 'false' };
+  }
+  return { mode: 'person', preserveText: 'false' };
+}
+
 const entries = (await readdir(INPUT_DIR, { withFileTypes: true }))
   .filter((d) => d.isFile() && IMAGE_EXT.has(path.extname(d.name).toLowerCase()))
   .map((d) => d.name)
@@ -137,13 +245,14 @@ try {
     const previewPng = path.join(OUT_DIR, `preview-${base}.png`);
 
     const content = await readFile(inputPath);
+    const req = requestOptionsFor(name);
     const multipart = createMultipartPayload({
       fields: {
         format: 'png',
         quality: 'fast',
         responseMode: 'json',
-        mode: 'person',
-        preserveText: 'false',
+        mode: req.mode,
+        preserveText: req.preserveText,
       },
       files: [
         {
@@ -162,7 +271,11 @@ try {
     });
 
     if (response.statusCode !== 200) {
-      results.push({ name, ok: false, issues: [`HTTP ${response.statusCode}`] });
+      results.push({
+        name,
+        ok: false,
+        issues: [`HTTP ${response.statusCode}: ${response.body?.slice?.(0, 120) ?? ''}`],
+      });
       continue;
     }
 
@@ -177,15 +290,22 @@ try {
     for (let i = 0; i < alpha.length; i += 1) {
       alpha[i] = data[i * 4 + 3] ?? 0;
     }
-    const metrics = evaluateAlpha(alpha, info.width, info.height);
-    results.push({ name, ...metrics, outPng, previewPng });
+    const metrics = evaluateAlpha(alpha, info.width, info.height, name);
+    results.push({
+      name,
+      ...metrics,
+      appliedMode: body.data.processing?.appliedMode,
+      needsReview: body.data.processing?.needsReview,
+      outPng,
+      previewPng,
+    });
   }
 } finally {
   await cleanup();
   await temp.cleanup();
 }
 
-console.log('\n.test-images batch (mode=person, preserveText=false)\n');
+console.log('\n.test-images batch (per-image mode, preserveText=false)\n');
 let failed = 0;
 for (const row of results) {
   const status = row.ok ? 'PASS' : 'FAIL';
@@ -193,8 +313,11 @@ for (const row of results) {
   console.log(`${status}  ${row.name}`);
   if (row.transparentRatio !== undefined) {
     console.log(
-      `      transparent=${row.transparentRatio} opaque=${row.opaqueRatio} borderMean=${row.borderMean} center=${row.center}`,
+      `      transparent=${row.transparentRatio} opaque=${row.opaqueRatio} borderMean=${row.borderMean} sideMean=${row.sideMean ?? '-'} center=${row.center}`,
     );
+  }
+  if (row.appliedMode !== undefined) {
+    console.log(`      appliedMode=${row.appliedMode} needsReview=${row.needsReview}`);
   }
   if (row.issues?.length) {
     console.log(`      → ${row.issues.join('; ')}`);
