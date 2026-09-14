@@ -23,6 +23,7 @@ const envSchema = z.object({
   RATE_LIMIT_MAX: z.coerce.number().int().positive().default(30),
   RATE_LIMIT_WINDOW: z.string().min(1).default('1 minute'),
   HF_ENDPOINT: z.string().url().default('https://huggingface.co'),
+  MATTE_REFINER_PATH: z.string().min(1).optional(),
 });
 
 export type Env = z.infer<typeof envSchema>;

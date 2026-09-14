@@ -16,3 +16,11 @@ debug-resized-mask.png
 debug-result-on-magenta.png
 .DS_Store
 Thumbs.db
+private/
+checkpoints/
+reports/
+models/custom/
+training/.venv/
+*.pt
+*.pth
+training/runs/

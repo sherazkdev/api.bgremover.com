@@ -3,6 +3,7 @@ import Fastify, { type FastifyInstance } from 'fastify';
 import { bodyLimitBytes, requestTimeoutMs, SENSITIVE_HEADER_NAMES } from './config/constants.js';
 import { loadEnv, type Env } from './config/env.js';
 import { BiRefNetProvider } from './infrastructure/ai/birefnet.provider.js';
+import { MatteRefiner } from './infrastructure/ai/matte-refiner.js';
 import { InferenceWorker } from './infrastructure/ai/inference-worker.js';
 import { getSharedModelManager, ModelManager } from './infrastructure/ai/model-manager.js';
 import { ImageProcessor } from './infrastructure/image/image.processor.js';
@@ -44,7 +45,10 @@ export interface BuildAppOptions {
   logger?: boolean | object;
 }
 
-function mergeDependencies(env: Env, overrides: Partial<AppDependencies> = {}): AppDependencies {
+async function mergeDependencies(
+  env: Env,
+  overrides: Partial<AppDependencies> = {},
+): Promise<AppDependencies> {
   const storage = overrides.storage ?? new LocalStorageService(env.UPLOAD_ROOT);
   const imageValidator = overrides.imageValidator ?? new ImageValidator(env);
   const imageProcessor = overrides.imageProcessor ?? new ImageProcessor();
@@ -52,6 +56,12 @@ function mergeDependencies(env: Env, overrides: Partial<AppDependencies> = {}): 
     overrides.modelManager ??
     getSharedModelManager(() => new ModelManager(new BiRefNetProvider(env)));
   const inferenceWorker = overrides.inferenceWorker ?? new InferenceWorker(modelManager);
+  const matteRefiner =
+    overrides.backgroundRemovalProcessor !== undefined
+      ? null
+      : env.MATTE_REFINER_PATH
+        ? await MatteRefiner.loadFromFile(env.MATTE_REFINER_PATH)
+        : null;
   const queue =
     overrides.queue ??
     new AsyncQueue({
@@ -60,7 +70,7 @@ function mergeDependencies(env: Env, overrides: Partial<AppDependencies> = {}): 
     });
   const backgroundRemovalProcessor =
     overrides.backgroundRemovalProcessor ??
-    new BackgroundRemovalProcessor(modelManager, inferenceWorker, imageProcessor);
+    new BackgroundRemovalProcessor(modelManager, inferenceWorker, imageProcessor, undefined, matteRefiner);
   const backgroundRemovalService =
     overrides.backgroundRemovalService ??
     new BackgroundRemovalService(
@@ -87,7 +97,7 @@ function mergeDependencies(env: Env, overrides: Partial<AppDependencies> = {}): 
 
 export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyInstance> {
   const env = options.env ?? loadEnv();
-  const deps = mergeDependencies(env, options.dependencies);
+  const deps = await mergeDependencies(env, options.dependencies);
 
   const app = Fastify({
     logger: options.logger ?? buildLoggerOptions(env),

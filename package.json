@@ -19,7 +19,9 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "test:e2e": "vitest run --config vitest.e2e.config.ts"
+    "test:e2e": "vitest run --config vitest.e2e.config.ts",
+    "train:bootstrap": "node training/bootstrap-teacher.mjs",
+    "train:matte": "node training/train_matte_refiner.mjs"
   },
   "keywords": [
     "background-removal",

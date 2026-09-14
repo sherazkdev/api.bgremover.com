@@ -1,0 +1,13 @@
+{
+  "apiBase": "http://127.0.0.1:3000",
+  "inputDirs": [".test-images", "datasets/raw"],
+  "privateRoot": "private",
+  "checkpointDir": "private/checkpoints/matte-refiner",
+  "modelDir": "private/models",
+  "reportDir": "private/reports",
+  "labelsDir": "private/labels",
+  "trainSize": 384,
+  "epochs": 40,
+  "batchSize": 2,
+  "learningRate": 0.0003
+}

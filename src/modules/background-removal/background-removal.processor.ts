@@ -5,6 +5,8 @@ import {
   type RemovalMode,
 } from '../../config/constants.js';
 import type { InferenceWorker } from '../../infrastructure/ai/inference-worker.js';
+import type { MatteRefiner } from '../../infrastructure/ai/matte-refiner.js';
+import { mergeSubjectWithRefiner } from '../../infrastructure/ai/matte-refiner.js';
 import type { AlphaMatte } from '../../infrastructure/ai/types.js';
 import type { ModelManager } from '../../infrastructure/ai/model-manager.js';
 import { ForegroundPreserver } from '../../infrastructure/cv/foreground-preservation.js';
@@ -50,6 +52,7 @@ export class BackgroundRemovalProcessor {
     private readonly inferenceWorker: InferenceWorker,
     private readonly imageProcessor: ImageProcessor,
     private readonly foregroundPreserver: ForegroundPreserver = new ForegroundPreserver(),
+    private readonly matteRefiner: MatteRefiner | null = null,
   ) {}
 
   public async process(input: RemovalProcessInput): Promise<RemovalProcessOutput> {
@@ -100,6 +103,13 @@ export class BackgroundRemovalProcessor {
         canvasWidth: inference.matte.width,
         canvasHeight: inference.matte.height,
       });
+      if (this.matteRefiner) {
+        const refined = await this.matteRefiner.predictMask(rgb, input.width, input.height);
+        subject = {
+          ...subject,
+          data: mergeSubjectWithRefiner(subject.data, refined),
+        };
+      }
       inferenceMs = inference.inferenceMs;
       modelName = provider.displayName;
     }
