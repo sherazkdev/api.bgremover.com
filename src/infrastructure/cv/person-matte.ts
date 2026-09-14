@@ -1,6 +1,14 @@
 import { refineAlphaMatte } from '../ai/mask.js';
-import { estimateBackgroundColor } from './color.js';
+import {
+  chebyshev,
+  estimateBackgroundColor,
+  luminance,
+  readRgb,
+  saturation,
+  type RgbColor,
+} from './color.js';
 import { defringeAlpha } from './defringe.js';
+
 export function refinePersonMatte(
   rgb: Uint8Array,
   alpha: Uint8Array,
@@ -8,11 +16,73 @@ export function refinePersonMatte(
   height: number,
 ): Uint8Array {
   const holeLimit = Math.max(12, Math.round(width * height * 0.00015));
-  let refined = fillInteriorBackgroundHoles(alpha, width, height, holeLimit);
   const { color: background } = estimateBackgroundColor(rgb, width, height);
+  let refined = restoreHairAgainstBackground(rgb, alpha, width, height, background);
+  refined = fillInteriorBackgroundHoles(refined, width, height, holeLimit);
   refined = defringeAlpha(rgb, refined, width, height, background, 28);
   refined = refineAlphaMatte(refined);
   return refined;
+}
+
+export function restoreHairAgainstBackground(
+  rgb: Uint8Array,
+  alpha: Uint8Array,
+  width: number,
+  height: number,
+  background: RgbColor,
+): Uint8Array {
+  const output = new Uint8Array(alpha);
+  let minX = width;
+  let maxX = -1;
+  let minY = height;
+  let maxY = -1;
+
+  for (let index = 0; index < alpha.length; index += 1) {
+    if ((alpha[index] ?? 0) < 160) {
+      continue;
+    }
+    const x = index % width;
+    const y = (index - x) / width;
+    if (x < minX) minX = x;
+    if (x > maxX) maxX = x;
+    if (y < minY) minY = y;
+    if (y > maxY) maxY = y;
+  }
+
+  if (maxX < minX) {
+    return output;
+  }
+
+  const bodyHeight = maxY - minY + 1;
+  const bodyWidth = maxX - minX + 1;
+  const headCx = (minX + maxX) / 2;
+  const halfWidth = Math.max(4, Math.round(bodyWidth * 0.42));
+  const searchBottom = Math.min(height - 1, minY + Math.round(bodyHeight * 0.28));
+  const backgroundLum = luminance(background.r, background.g, background.b);
+
+  for (let y = 0; y <= searchBottom; y += 1) {
+    const left = Math.max(0, Math.round(headCx - halfWidth));
+    const right = Math.min(width - 1, Math.round(headCx + halfWidth));
+    for (let x = left; x <= right; x += 1) {
+      const index = y * width + x;
+      if ((output[index] ?? 0) >= 200) {
+        continue;
+      }
+      const color = readRgb(rgb, index);
+      if (chebyshev(color, background) < 38) {
+        continue;
+      }
+      const lum = luminance(color.r, color.g, color.b);
+      const sat = saturation(color.r, color.g, color.b);
+      const looksLikeHair = lum < 96 && sat < 0.34 && lum + 40 < backgroundLum;
+      if (!looksLikeHair) {
+        continue;
+      }
+      output[index] = 255;
+    }
+  }
+
+  return output;
 }
 
 export function fillInteriorBackgroundHoles(

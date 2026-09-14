@@ -175,6 +175,26 @@ describe('mask fusion', () => {
     expect(fused.usedGraphicFallback).toBe(false);
   });
 
+  it('keeps dense hair that is not a full-width ceiling bar', () => {
+    const width = 20;
+    const height = 20;
+    const subject = new Uint8Array(width * height);
+    fillRect(subject, width, 7, 0, 13, 8, 255);
+    fillRect(subject, width, 6, 8, 14, 19, 255);
+
+    const fused = fuseForegroundMasks({
+      subjectMask: subject,
+      overlays: overlays(width * height),
+      width,
+      height,
+      mode: 'auto',
+      preservation: preservation(),
+    });
+
+    expect(fused.alpha[1 * width + 10]).toBeGreaterThan(180);
+    expect(fused.alpha[12 * width + 10]).toBeGreaterThan(180);
+  });
+
   it('drops a wide ceiling bar even when it touches the person', () => {
     const width = 20;
     const height = 20;

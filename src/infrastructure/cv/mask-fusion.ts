@@ -51,7 +51,7 @@ export function fuseForegroundMasks(input: {
 
   let subjectMask = useGraphicPath
     ? new Uint8Array(input.subjectMask.length)
-    : stripOverheadFixtures(
+    : maybeStripOverheadFixtures(
         cleanSubjectMask(
           tightenMixedSubject(input.subjectMask, overlayCoverage, subjectCoverage),
           input.width,
@@ -59,6 +59,7 @@ export function fuseForegroundMasks(input: {
         ),
         input.width,
         input.height,
+        input.mode,
       );
   if (composite && !useGraphicPath && input.rgb) {
     subjectMask = trimPhotographicScene(subjectMask, input.rgb, input.width, input.height);
@@ -115,8 +116,8 @@ export function fuseForegroundMasks(input: {
       ...input,
       subjectMask,
     });
-    fused = stripOverheadFixtures(fused, input.width, input.height);
-    if (isSubjectCutoutMode(input.mode) && input.rgb) {
+    fused = maybeStripOverheadFixtures(fused, input.width, input.height, input.mode);
+    if (!useGraphicPath && input.rgb) {
       fused = refinePersonMatte(input.rgb, fused, input.width, input.height);
     } else {
       fused = refineAlphaMatte(fused);
@@ -333,6 +334,18 @@ function tightenMixedSubject(
   return tightened;
 }
 
+function maybeStripOverheadFixtures(
+  mask: Uint8Array,
+  width: number,
+  height: number,
+  mode: RemovalMode,
+): Uint8Array {
+  if (isSubjectCutoutMode(mode)) {
+    return mask;
+  }
+  return stripOverheadFixtures(mask, width, height);
+}
+
 export function stripOverheadFixtures(
   mask: Uint8Array,
   width: number,
@@ -350,22 +363,21 @@ export function stripOverheadFixtures(
   const torso = torsoBox(mask, width, height, primary);
   const output = new Uint8Array(mask);
   const topLimit = Math.min(torso.minY, Math.round(height * 0.22));
+  const torsoWidth = Math.max(1, torso.maxX - torso.minX + 1);
+  const wideLimit = Math.max(Math.round(torsoWidth * 1.35), Math.round(width * 0.42));
 
   for (let y = 0; y < topLimit; y += 1) {
     let minX = width;
     let maxX = -1;
-    let count = 0;
     const row = y * width;
     for (let x = 0; x < width; x += 1) {
       if ((output[row + x] ?? 0) > 48) {
-        count += 1;
         if (x < minX) minX = x;
         if (x > maxX) maxX = x;
       }
     }
-    const wide = maxX >= minX && maxX - minX + 1 > Math.max(torso.maxX - torso.minX + 1, width * 0.3);
-    const dense = count / width > 0.18;
-    if (!wide && !dense) {
+    const span = maxX >= minX ? maxX - minX + 1 : 0;
+    if (span <= wideLimit) {
       continue;
     }
     output.fill(0, row, row + width);
