@@ -111,4 +111,16 @@ describe('ImageProcessor.prepareModelInput', () => {
     expect(input.pixels[center + 1]).toBe(input.pixels[center]);
     expect(input.pixels[center + 2]).toBe(input.pixels[center]);
   });
+
+  it('uses letterbox contain for tall portraits in auto mode', async () => {
+    const jpeg = await createJpeg(600, 900);
+    const input = await processor.prepareModelInput(jpeg, 'fast', 512, 512, 'auto');
+    expect(input.layout.mode).toBe('contain');
+  });
+
+  it('uses cover crop for wide images in auto mode', async () => {
+    const jpeg = await createJpeg(900, 600);
+    const input = await processor.prepareModelInput(jpeg, 'fast', 512, 512, 'auto');
+    expect(input.layout.mode).toBe('cover');
+  });
 });

@@ -30,10 +30,14 @@ export function computeCoverCrop(
   sourceHeight: number,
   canvasWidth: number,
   canvasHeight: number,
+  anchor: 'center' | 'bottom' = 'center',
 ): CoverCropLayout {
   const scale = Math.max(canvasWidth / sourceWidth, canvasHeight / sourceHeight);
   const scaledWidth = sourceWidth * scale;
   const scaledHeight = sourceHeight * scale;
+  const maxTop = Math.max(0, scaledHeight - canvasHeight);
+  const cropTop =
+    anchor === 'bottom' ? maxTop : maxTop / 2;
   return {
     sourceWidth,
     sourceHeight,
@@ -41,7 +45,7 @@ export function computeCoverCrop(
     canvasHeight,
     scale,
     cropLeft: (scaledWidth - canvasWidth) / 2,
-    cropTop: (scaledHeight - canvasHeight) / 2,
+    cropTop,
   };
 }
 

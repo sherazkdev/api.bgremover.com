@@ -85,8 +85,16 @@ export class ImageProcessor {
       pipeline = sharp(orientedImage).rotate().toColourspace('srgb').removeAlpha();
     }
 
-    if (useCover && !isGraphicCutoutMode(mode)) {
-      const cover = computeCoverCrop(sourceWidth, sourceHeight, modelWidth, modelHeight);
+    const tallPortrait = sourceHeight / Math.max(1, sourceWidth) >= 1.2;
+    // Cover crop zooms the subject but drops strips of the frame; tall portraits need the full canvas in the model.
+    if (useCover && !isGraphicCutoutMode(mode) && !tallPortrait) {
+      const cover = computeCoverCrop(
+        sourceWidth,
+        sourceHeight,
+        modelWidth,
+        modelHeight,
+        'center',
+      );
       const scaledWidth = Math.max(1, Math.round(sourceWidth * cover.scale));
       const scaledHeight = Math.max(1, Math.round(sourceHeight * cover.scale));
       const left = Math.max(0, Math.min(scaledWidth - modelWidth, Math.round(cover.cropLeft)));

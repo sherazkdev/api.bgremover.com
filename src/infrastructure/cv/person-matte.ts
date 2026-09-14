@@ -15,13 +15,40 @@ export function refinePersonMatte(
   width: number,
   height: number,
 ): Uint8Array {
-  const holeLimit = Math.max(12, Math.round(width * height * 0.00015));
+  const holeLimit = Math.max(64, Math.round(width * height * 0.00045));
   const { color: background } = estimateBackgroundColor(rgb, width, height);
-  let refined = restoreHairAgainstBackground(rgb, alpha, width, height, background);
+  let refined = peelBackgroundLikeTopBand(rgb, alpha, width, height, background);
+  refined = restoreHairAgainstBackground(rgb, refined, width, height, background);
   refined = fillInteriorBackgroundHoles(refined, width, height, holeLimit);
   refined = defringeAlpha(rgb, refined, width, height, background, 28);
   refined = refineAlphaMatte(refined);
   return refined;
+}
+
+function peelBackgroundLikeTopBand(
+  rgb: Uint8Array,
+  alpha: Uint8Array,
+  width: number,
+  height: number,
+  background: RgbColor,
+): Uint8Array {
+  const output = new Uint8Array(alpha);
+  const topBand = Math.round(height * 0.18);
+  for (let y = 0; y < topBand; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      const index = y * width + x;
+      if ((alpha[index] ?? 0) < 48) {
+        continue;
+      }
+      if (chebyshev(readRgb(rgb, index), background) < 36) {
+        output[index] = 0;
+      }
+    }
+  }
+  for (let index = topBand * width; index < alpha.length; index += 1) {
+    output[index] = alpha[index] ?? 0;
+  }
+  return output;
 }
 
 export function restoreHairAgainstBackground(

@@ -362,7 +362,7 @@ export function stripOverheadFixtures(
 
   const torso = torsoBox(mask, width, height, primary);
   const output = new Uint8Array(mask);
-  const topLimit = Math.min(torso.minY, Math.round(height * 0.22));
+  const topLimit = Math.min(torso.minY, Math.round(height * 0.28));
   const torsoWidth = Math.max(1, torso.maxX - torso.minX + 1);
   const wideLimit = Math.max(Math.round(torsoWidth * 1.35), Math.round(width * 0.42));
 
@@ -389,7 +389,7 @@ export function stripOverheadFixtures(
     if (component === body) {
       continue;
     }
-    if (component.maxY < torso.minY && component.maxX - component.minX + 1 > width * 0.28) {
+    if (component.maxY < torso.minY && component.maxX - component.minX + 1 > width * 0.22) {
       for (const index of component.indices) {
         output[index] = 0;
       }
