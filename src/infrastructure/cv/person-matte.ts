@@ -60,9 +60,11 @@ export function restoreHairAgainstBackground(
   const searchBottom = Math.min(height - 1, minY + Math.round(bodyHeight * 0.28));
   const backgroundLum = luminance(background.r, background.g, background.b);
 
+  const left = Math.max(0, Math.round(headCx - halfWidth));
+  const right = Math.min(width - 1, Math.round(headCx + halfWidth));
+  const candidates = new Uint8Array(alpha.length);
+
   for (let y = 0; y <= searchBottom; y += 1) {
-    const left = Math.max(0, Math.round(headCx - halfWidth));
-    const right = Math.min(width - 1, Math.round(headCx + halfWidth));
     for (let x = left; x <= right; x += 1) {
       const index = y * width + x;
       if ((output[index] ?? 0) >= 200) {
@@ -78,11 +80,56 @@ export function restoreHairAgainstBackground(
       if (!looksLikeHair) {
         continue;
       }
-      output[index] = 255;
+      candidates[index] = 1;
+    }
+  }
+
+  const maxGrow = Math.max(6, Math.round(Math.min(width, height) * 0.04));
+  for (let step = 0; step < maxGrow; step += 1) {
+    let grew = false;
+    for (let y = 0; y <= searchBottom; y += 1) {
+      for (let x = left; x <= right; x += 1) {
+        const index = y * width + x;
+        if (!candidates[index] || (output[index] ?? 0) >= 200) {
+          continue;
+        }
+        if (!touchesOpaque(output, width, height, x, y)) {
+          continue;
+        }
+        output[index] = 255;
+        grew = true;
+      }
+    }
+    if (!grew) {
+      break;
     }
   }
 
   return output;
+}
+
+function touchesOpaque(
+  alpha: Uint8Array,
+  width: number,
+  height: number,
+  x: number,
+  y: number,
+): boolean {
+  const neighbors = [
+    [x - 1, y],
+    [x + 1, y],
+    [x, y - 1],
+    [x, y + 1],
+  ] as const;
+  for (const [nx, ny] of neighbors) {
+    if (nx < 0 || ny < 0 || nx >= width || ny >= height) {
+      continue;
+    }
+    if ((alpha[ny * width + nx] ?? 0) >= 200) {
+      return true;
+    }
+  }
+  return false;
 }
 
 export function fillInteriorBackgroundHoles(

@@ -7,33 +7,9 @@ export function isCompositeGraphicPhoto(
   rgb: Uint8Array,
   width: number,
   height: number,
-  overlays?: OverlayMasks,
+  _overlays?: OverlayMasks,
 ): boolean {
-  if (isSplitPanelPhoto(rgb, width, height)) {
-    return true;
-  }
-  const hasOverlay =
-    overlays !== undefined &&
-    (overlays.analysis.overlayCoverage > 0.008 || overlays.analysis.textCoverage > 0.004);
-  if (!hasOverlay) {
-    return false;
-  }
-
-  let dark = 0;
-  let colorful = 0;
-  const pixels = width * height;
-  for (let index = 0; index < pixels; index += 1) {
-    const color = readRgb(rgb, index);
-    const luma = luminance(color.r, color.g, color.b);
-    const chroma = saturation(color.r, color.g, color.b);
-    if (luma < 28) {
-      dark += 1;
-    }
-    if (chroma > 0.22 && luma > 40) {
-      colorful += 1;
-    }
-  }
-  return dark / pixels > 0.12 && colorful / pixels > 0.12;
+  return isSplitPanelPhoto(rgb, width, height);
 }
 
 export function isSplitPanelPhoto(rgb: Uint8Array, width: number, height: number): boolean {
