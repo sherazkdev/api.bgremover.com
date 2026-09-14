@@ -8,6 +8,7 @@ import {
   type RgbColor,
 } from './color.js';
 import { defringeAlpha } from './defringe.js';
+import { coverage, erode } from './morphology.js';
 
 export function refinePersonMatte(
   rgb: Uint8Array,
@@ -21,6 +22,13 @@ export function refinePersonMatte(
     ? Math.max(256, Math.round(width * height * 0.0012))
     : Math.max(64, Math.round(width * height * 0.00045));
   let refined = peelBackgroundLikeTopBand(rgb, alpha, width, height, background);
+  if (coverage(alpha, 128) > 0.28) {
+    refined = shrinkBloatedForeground(rgb, refined, width, height, background);
+  }
+  if (coverage(refined, 128) > 0.34) {
+    refined = trimMarginBackground(rgb, refined, width, height, background);
+    refined = peelExteriorForeground(rgb, refined, width, height, background);
+  }
   refined = restoreHairAgainstBackground(rgb, refined, width, height, background);
   refined = fillInteriorBackgroundHoles(refined, width, height, holeLimit);
   const greenScreenLike =
@@ -61,6 +69,182 @@ function peelBackgroundLikeTopBand(
   }
   for (let index = topBand * width; index < alpha.length; index += 1) {
     output[index] = alpha[index] ?? 0;
+  }
+  return output;
+}
+
+function isBackgroundColoredPixel(
+  rgb: Uint8Array,
+  index: number,
+  background: RgbColor,
+): boolean {
+  const color = readRgb(rgb, index);
+  const lum = luminance(color.r, color.g, color.b);
+  const sat = saturation(color.r, color.g, color.b);
+  if (lum > 168 && sat < 0.16) {
+    return false;
+  }
+  return chebyshev(color, background) < 38 && sat < 0.26;
+}
+
+function isPersonSeedPixel(rgb: Uint8Array, index: number, background: RgbColor): boolean {
+  const color = readRgb(rgb, index);
+  const lum = luminance(color.r, color.g, color.b);
+  const sat = saturation(color.r, color.g, color.b);
+  if (isBackgroundColoredPixel(rgb, index, background)) {
+    return false;
+  }
+  const skinLike = sat > 0.05 && sat < 0.62 && lum > 30 && lum < 240;
+  const hairLike = lum < 108 && sat < 0.4;
+  const clothLike = sat > 0.12 || lum < 72 || lum > 165;
+  return skinLike || hairLike || clothLike;
+}
+
+/** Drop outdoor false-foreground where the model kept sky/ground connected to the body. */
+function shrinkBloatedForeground(
+  rgb: Uint8Array,
+  alpha: Uint8Array,
+  width: number,
+  height: number,
+  background: RgbColor,
+): Uint8Array {
+  const binary = new Uint8Array(alpha.length);
+  for (let index = 0; index < alpha.length; index += 1) {
+    binary[index] = (alpha[index] ?? 0) >= 128 ? 255 : 0;
+  }
+  const radius = Math.max(2, Math.round(Math.min(width, height) * 0.005));
+  const core = erode(binary, width, height, radius);
+  const keep = new Uint8Array(alpha.length);
+  const stack: number[] = [];
+
+  for (let index = 0; index < alpha.length; index += 1) {
+    if ((alpha[index] ?? 0) < 128) {
+      continue;
+    }
+    if ((core[index] ?? 0) < 48 && !isPersonSeedPixel(rgb, index, background)) {
+      continue;
+    }
+    keep[index] = 1;
+    stack.push(index);
+  }
+
+  while (stack.length > 0) {
+    const current = stack.pop() ?? 0;
+    const x = current % width;
+    const y = (current - x) / width;
+    const neighbors = [
+      [x - 1, y],
+      [x + 1, y],
+      [x, y - 1],
+      [x, y + 1],
+    ] as const;
+    for (const [nx, ny] of neighbors) {
+      if (nx < 0 || ny < 0 || nx >= width || ny >= height) {
+        continue;
+      }
+      const next = ny * width + nx;
+      if (keep[next] || (alpha[next] ?? 0) < 48) {
+        continue;
+      }
+      if ((core[next] ?? 0) < 48 && isBackgroundColoredPixel(rgb, next, background)) {
+        continue;
+      }
+      keep[next] = 1;
+      stack.push(next);
+    }
+  }
+
+  const output = new Uint8Array(alpha.length);
+  for (let index = 0; index < alpha.length; index += 1) {
+    output[index] = keep[index] ? (alpha[index] ?? 0) : 0;
+  }
+  return output;
+}
+
+/** Clear background-colored pixels along the inside edge of an oversized matte. */
+function trimMarginBackground(
+  rgb: Uint8Array,
+  alpha: Uint8Array,
+  width: number,
+  height: number,
+  background: RgbColor,
+): Uint8Array {
+  let minX = width;
+  let maxX = -1;
+  let minY = height;
+  let maxY = -1;
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      if ((alpha[y * width + x] ?? 0) < 128) {
+        continue;
+      }
+      if (x < minX) minX = x;
+      if (x > maxX) maxX = x;
+      if (y < minY) minY = y;
+      if (y > maxY) maxY = y;
+    }
+  }
+  if (maxX < minX) {
+    return alpha;
+  }
+  const boxW = maxX - minX + 1;
+  const boxH = maxY - minY + 1;
+  const marginX = Math.max(2, Math.round(boxW * 0.12));
+  const marginY = Math.max(2, Math.round(boxH * 0.12));
+  const output = new Uint8Array(alpha);
+  for (let y = minY; y <= maxY; y += 1) {
+    for (let x = minX; x <= maxX; x += 1) {
+      const index = y * width + x;
+      const onMargin =
+        x <= minX + marginX ||
+        x >= maxX - marginX ||
+        y <= minY + marginY ||
+        y >= maxY - marginY;
+      if (!onMargin || (alpha[index] ?? 0) < 48) {
+        continue;
+      }
+      if (isBackgroundColoredPixel(rgb, index, background)) {
+        output[index] = 0;
+      }
+    }
+  }
+  return output;
+}
+
+function peelExteriorForeground(
+  rgb: Uint8Array,
+  alpha: Uint8Array,
+  width: number,
+  height: number,
+  background: RgbColor,
+): Uint8Array {
+  const coreMinX = Math.floor(width * 0.28);
+  const coreMaxX = Math.ceil(width * 0.72);
+  const output = new Uint8Array(alpha.length);
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      const index = y * width + x;
+      const value = alpha[index] ?? 0;
+      if (value < 48) {
+        output[index] = value;
+        continue;
+      }
+      const inCore = x >= coreMinX && x <= coreMaxX;
+      if (inCore) {
+        output[index] = value;
+        continue;
+      }
+      const dist = chebyshev(readRgb(rgb, index), background);
+      if (dist < 46 && isBackgroundColoredPixel(rgb, index, background)) {
+        output[index] = 0;
+        continue;
+      }
+      if (dist < 52 && !isPersonSeedPixel(rgb, index, background)) {
+        output[index] = 0;
+        continue;
+      }
+      output[index] = value;
+    }
   }
   return output;
 }

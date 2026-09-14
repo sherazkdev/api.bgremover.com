@@ -45,15 +45,47 @@ function evaluateAlpha(alpha, width, height) {
   const issues = [];
   if (transparentRatio < 0.08) issues.push('background not removed (low transparency)');
   if (opaqueRatio < 0.04) issues.push('subject missing (too transparent)');
-  if (opaqueRatio > 0.92) issues.push('almost no cutout (too opaque)');
+  if (opaqueRatio > 0.42) issues.push('mask too large (background kept as foreground)');
+  const sideBand = Math.max(2, Math.round(width * 0.08));
+  let sideSum = 0;
+  let sideCount = 0;
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      if (x >= sideBand && x < width - sideBand) continue;
+      sideSum += sample(alpha, width, x, y);
+      sideCount += 1;
+    }
+  }
+  const sideMean = sideCount > 0 ? sideSum / sideCount : 0;
+  if (sideMean > 52) issues.push('left/right edges still foreground');
   if (cornerMax > 200) issues.push('corners still opaque');
   if (center < 80 && centerUpper < 80) issues.push('center not solid (holes in subject)');
+
+  const borderBandX = Math.max(2, Math.round(width * 0.04));
+  const borderBandY = Math.max(2, Math.round(height * 0.04));
+  let borderSum = 0;
+  let borderCount = 0;
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      const onBorder =
+        x < borderBandX ||
+        x >= width - borderBandX ||
+        y < borderBandY ||
+        y >= height - borderBandY;
+      if (!onBorder) continue;
+      borderSum += sample(alpha, width, x, y);
+      borderCount += 1;
+    }
+  }
+  const borderMean = borderCount > 0 ? borderSum / borderCount : 0;
+  if (borderMean > 48) issues.push('outer frame still foreground');
 
   return {
     transparentRatio: Number(transparentRatio.toFixed(4)),
     opaqueRatio: Number(opaqueRatio.toFixed(4)),
     cornerMax,
     center,
+    borderMean: Number(borderMean.toFixed(1)),
     ok: issues.length === 0,
     issues,
   };
@@ -110,7 +142,7 @@ try {
         format: 'png',
         quality: 'fast',
         responseMode: 'json',
-        mode: 'auto',
+        mode: 'person',
         preserveText: 'false',
       },
       files: [
@@ -153,7 +185,7 @@ try {
   await temp.cleanup();
 }
 
-console.log('\n.test-images batch (mode=auto, preserveText=false)\n');
+console.log('\n.test-images batch (mode=person, preserveText=false)\n');
 let failed = 0;
 for (const row of results) {
   const status = row.ok ? 'PASS' : 'FAIL';
@@ -161,7 +193,7 @@ for (const row of results) {
   console.log(`${status}  ${row.name}`);
   if (row.transparentRatio !== undefined) {
     console.log(
-      `      transparent=${row.transparentRatio} opaque=${row.opaqueRatio} cornerMax=${row.cornerMax} center=${row.center}`,
+      `      transparent=${row.transparentRatio} opaque=${row.opaqueRatio} borderMean=${row.borderMean} center=${row.center}`,
     );
   }
   if (row.issues?.length) {
