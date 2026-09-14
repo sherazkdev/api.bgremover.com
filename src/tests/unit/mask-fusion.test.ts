@@ -88,7 +88,7 @@ describe('mask fusion', () => {
     ).toBe(false);
   });
 
-  it('switches auto to the graphic model when the layout is text-heavy', () => {
+  it('keeps BiRefNet for text-heavy auto layouts when a subject is already segmented', () => {
     expect(
       shouldUseGraphicPath({
         mode: 'auto',
@@ -98,9 +98,22 @@ describe('mask fusion', () => {
         nonBackgroundCoverage: 0.45,
         textHeavy: true,
       }),
-    ).toBe(true);
+    ).toBe(false);
     expect(
       shouldRouteToGraphicModel('auto', overlays(64, 255), new Uint8Array(64 * 3), 8, 8),
+    ).toBe(false);
+  });
+
+  it('uses the graphic path for text-heavy auto layouts without a subject', () => {
+    expect(
+      shouldUseGraphicPath({
+        mode: 'auto',
+        subjectCoverage: 0.04,
+        overlayCoverage: 0.2,
+        graphicScore: 0.7,
+        nonBackgroundCoverage: 0.45,
+        textHeavy: true,
+      }),
     ).toBe(true);
   });
 
@@ -108,7 +121,7 @@ describe('mask fusion', () => {
     const width = 16;
     const height = 16;
     const subject = new Uint8Array(width * height);
-    fillRect(subject, width, 0, 0, 15, 4, 255);
+    fillRect(subject, width, 0, 0, 15, 0, 255);
     const overlay = overlays(width * height);
     fillRect(overlay.backgroundSubtractMask, width, 3, 6, 12, 12, 255);
     fillRect(overlay.textMask, width, 3, 6, 12, 9, 255);

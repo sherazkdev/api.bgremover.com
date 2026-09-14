@@ -23,8 +23,17 @@ export function refinePersonMatte(
   let refined = peelBackgroundLikeTopBand(rgb, alpha, width, height, background);
   refined = restoreHairAgainstBackground(rgb, refined, width, height, background);
   refined = fillInteriorBackgroundHoles(refined, width, height, holeLimit);
-  if (!outdoorLike) {
-    refined = defringeAlpha(rgb, refined, width, height, background, 28);
+  const greenScreenLike =
+    background.g > background.r + 18 && background.g > background.b + 12;
+  if (!outdoorLike || greenScreenLike) {
+    refined = defringeAlpha(
+      rgb,
+      refined,
+      width,
+      height,
+      background,
+      greenScreenLike ? 34 : 28,
+    );
   }
   refined = refineAlphaMatte(refined);
   return refined;

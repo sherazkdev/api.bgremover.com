@@ -189,11 +189,11 @@ export function shouldUseGraphicPath(input: {
   if (input.composite) {
     return false;
   }
-  if (input.textHeavy) {
-    return true;
-  }
   if (input.subjectCoverage >= SUBJECT_LOCK_COVERAGE) {
     return false;
+  }
+  if (input.textHeavy) {
+    return true;
   }
   if (input.graphicScore >= 0.58 && input.subjectCoverage < 0.08) {
     return true;
@@ -220,7 +220,7 @@ export function shouldRouteToGraphicModel(
   if (isCompositeGraphicPhoto(rgb, width, height, overlays ?? undefined)) {
     return false;
   }
-  return overlays.analysis.isTextHeavy;
+  return false;
 }
 
 export function pruneDetachedBackground(
