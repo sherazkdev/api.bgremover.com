@@ -4,13 +4,16 @@ import path from 'node:path';
 
 import sharp from 'sharp';
 
-import type { OutputFormat, QualityMode } from '../../config/constants.js';
+import type { OutputFormat, QualityMode, RemovalMode } from '../../config/constants.js';
 import { AppError, backgroundRemovalFailedError } from '../../shared/errors/app-error.js';
 import { assertGrayscaleMask, copyUint8, logMaskDiagnostics, minMax, refineAlphaMatte } from '../ai/mask.js';
+import { estimateBackgroundColor } from '../cv/color.js';
+import { defringeAlpha } from '../cv/defringe.js';
 import { estimatePaperColors } from '../cv/graphic-matte.js';
 import { defringeAgainstPapers } from '../cv/graphic-matte.js';
+import { isGraphicCutoutMode, isSubjectCutoutMode } from '../cv/preservation-options.js';
 import type { AlphaMatte } from '../ai/types.js';
-import { computeLetterbox, IMAGENET_PAD_RGB, type LetterboxLayout } from './letterbox.js';
+import { computeCoverCrop, computeLetterbox, IMAGENET_PAD_RGB, type ModelInputLayout } from './letterbox.js';
 
 configureSharpRuntime();
 
@@ -61,8 +64,10 @@ export class ImageProcessor {
     quality: QualityMode,
     modelWidth: number,
     modelHeight: number,
-  ): Promise<{ pixels: Uint8Array; width: number; height: number; letterbox: LetterboxLayout }> {
+    mode: RemovalMode = 'auto',
+  ): Promise<{ pixels: Uint8Array; width: number; height: number; layout: ModelInputLayout }> {
     const kernel = quality === 'hd' ? 'lanczos3' : 'cubic';
+    const useCover = isSubjectCutoutMode(mode) || mode === 'auto';
     let sourceWidth: number;
     let sourceHeight: number;
     let pipeline: ReturnType<typeof sharp>;
@@ -78,6 +83,28 @@ export class ImageProcessor {
       sourceWidth = meta.width ?? modelWidth;
       sourceHeight = meta.height ?? modelHeight;
       pipeline = sharp(orientedImage).rotate().toColourspace('srgb').removeAlpha();
+    }
+
+    if (useCover && !isGraphicCutoutMode(mode)) {
+      const cover = computeCoverCrop(sourceWidth, sourceHeight, modelWidth, modelHeight);
+      const scaledWidth = Math.max(1, Math.round(sourceWidth * cover.scale));
+      const scaledHeight = Math.max(1, Math.round(sourceHeight * cover.scale));
+      const left = Math.max(0, Math.min(scaledWidth - modelWidth, Math.round(cover.cropLeft)));
+      const top = Math.max(0, Math.min(scaledHeight - modelHeight, Math.round(cover.cropTop)));
+      const { data, info } = await pipeline
+        .resize(scaledWidth, scaledHeight, { fit: 'fill', kernel })
+        .extract({ left, top, width: modelWidth, height: modelHeight })
+        .raw()
+        .toBuffer({ resolveWithObject: true });
+      return {
+        pixels: packRgbChannels(data, info.width, info.height, info.channels),
+        width: info.width,
+        height: info.height,
+        layout: {
+          mode: 'cover',
+          cover: { ...cover, cropLeft: left, cropTop: top },
+        },
+      };
     }
 
     const letterbox = computeLetterbox(sourceWidth, sourceHeight, modelWidth, modelHeight);
@@ -100,10 +127,13 @@ export class ImageProcessor {
       pixels: packRgbChannels(data, info.width, info.height, info.channels),
       width: info.width,
       height: info.height,
-      letterbox: {
-        ...letterbox,
-        canvasWidth: info.width,
-        canvasHeight: info.height,
+      layout: {
+        mode: 'contain',
+        letterbox: {
+          ...letterbox,
+          canvasWidth: info.width,
+          canvasHeight: info.height,
+        },
       },
     };
   }
@@ -116,8 +146,18 @@ export class ImageProcessor {
     format: OutputFormat;
     width: number;
     height: number;
+    subjectCutout?: boolean;
   }): Promise<CompositeResult> {
-    const { orientedImage, rgb: providedRgb, matte, quality, format, width, height } = options;
+    const {
+      orientedImage,
+      rgb: providedRgb,
+      matte,
+      quality,
+      format,
+      width,
+      height,
+      subjectCutout = false,
+    } = options;
 
     try {
       const maskBytes = copyUint8(matte.data);
@@ -140,17 +180,32 @@ export class ImageProcessor {
             .raw()
             .toBuffer({ resolveWithObject: true });
       const rgbBytes = rgb.data instanceof Uint8Array ? rgb.data : new Uint8Array(rgb.data);
-      const { colors: paperColors } = estimatePaperColors(rgbBytes, width, height);
-      const refinedMask = Buffer.from(
-        defringeAgainstPapers(
-          rgbBytes,
-          refineAlphaMatte(copyUint8(resizedMask)),
-          width,
-          height,
-          paperColors,
-          20,
-        ),
-      );
+      let refinedMask: Buffer;
+      if (subjectCutout) {
+        const { color: background } = estimateBackgroundColor(rgbBytes, width, height);
+        refinedMask = Buffer.from(
+          defringeAlpha(
+            rgbBytes,
+            copyUint8(resizedMask),
+            width,
+            height,
+            background,
+            32,
+          ),
+        );
+      } else {
+        const { colors: paperColors } = estimatePaperColors(rgbBytes, width, height);
+        refinedMask = Buffer.from(
+          defringeAgainstPapers(
+            rgbBytes,
+            refineAlphaMatte(copyUint8(resizedMask)),
+            width,
+            height,
+            paperColors,
+            20,
+          ),
+        );
+      }
       if (rgb.info.width !== width || rgb.info.height !== height) {
         throw backgroundRemovalFailedError(
           'Oriented image dimensions do not match the mask target',

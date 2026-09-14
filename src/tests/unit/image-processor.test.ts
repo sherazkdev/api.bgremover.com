@@ -70,16 +70,19 @@ describe('ImageProcessor.applySoftAlphaMask', () => {
 describe('ImageProcessor.prepareModelInput', () => {
   it('always resizes to the model input as packed RGB', async () => {
     const jpeg = await createJpeg(80, 40);
-    const input = await processor.prepareModelInput(jpeg, 'fast', 32, 16);
+    const input = await processor.prepareModelInput(jpeg, 'fast', 32, 16, 'graphic');
     expect(input.width).toBe(32);
     expect(input.height).toBe(16);
     expect(input.pixels.length).toBe(32 * 16 * 3);
-    expect(input.letterbox).toMatchObject({
-      contentWidth: 32,
-      contentHeight: 16,
-      offsetX: 0,
-      offsetY: 0,
-    });
+    expect(input.layout.mode).toBe('contain');
+    if (input.layout.mode === 'contain') {
+      expect(input.layout.letterbox).toMatchObject({
+        contentWidth: 32,
+        contentHeight: 16,
+        offsetX: 0,
+        offsetY: 0,
+      });
+    }
   });
 
   it('converts grayscale sources to three channels', async () => {
@@ -94,12 +97,16 @@ describe('ImageProcessor.prepareModelInput', () => {
       .grayscale()
       .png()
       .toBuffer();
-    const input = await processor.prepareModelInput(gray, 'hd', 8, 8);
+    const input = await processor.prepareModelInput(gray, 'hd', 8, 8, 'graphic');
     expect(input.width).toBe(8);
     expect(input.height).toBe(8);
     expect(input.pixels.length).toBe(8 * 8 * 3);
-    expect(input.letterbox.offsetY).toBeGreaterThan(0);
-    const center = ((input.letterbox.offsetY + 1) * 8 + 4) * 3;
+    expect(input.layout.mode).toBe('contain');
+    if (input.layout.mode !== 'contain') {
+      throw new Error('expected contain layout');
+    }
+    expect(input.layout.letterbox.offsetY).toBeGreaterThan(0);
+    const center = ((input.layout.letterbox.offsetY + 1) * 8 + 4) * 3;
     expect(input.pixels[center]).toBeGreaterThan(100);
     expect(input.pixels[center + 1]).toBe(input.pixels[center]);
     expect(input.pixels[center + 2]).toBe(input.pixels[center]);

@@ -14,7 +14,7 @@ import { shouldRouteToGraphicModel } from '../../infrastructure/cv/mask-fusion.j
 import type { PreservationOptions } from '../../infrastructure/cv/preservation-options.js';
 import type { FusedForeground } from '../../infrastructure/cv/types.js';
 import type { ImageProcessor } from '../../infrastructure/image/image.processor.js';
-import { cropLetterboxMask } from '../../infrastructure/image/letterbox.js';
+import { cropLetterboxMask, mapCoverMaskToSource } from '../../infrastructure/image/letterbox.js';
 
 export interface RemovalProcessInput {
   orientedBuffer: Buffer;
@@ -89,6 +89,7 @@ export class BackgroundRemovalProcessor {
         input.quality,
         provider.inputWidth,
         provider.inputHeight,
+        input.mode,
       );
       const inference = await this.inferenceWorker.run({
         pixels: modelInput.pixels,
@@ -98,11 +99,20 @@ export class BackgroundRemovalProcessor {
         originalWidth: input.width,
         originalHeight: input.height,
       });
-      subject = cropLetterboxMask(inference.matte.data, {
-        ...modelInput.letterbox,
-        canvasWidth: inference.matte.width,
-        canvasHeight: inference.matte.height,
-      });
+      if (modelInput.layout.mode === 'cover') {
+        subject = mapCoverMaskToSource(
+          inference.matte.data,
+          inference.matte.width,
+          inference.matte.height,
+          modelInput.layout.cover,
+        );
+      } else {
+        subject = cropLetterboxMask(inference.matte.data, {
+          ...modelInput.layout.letterbox,
+          canvasWidth: inference.matte.width,
+          canvasHeight: inference.matte.height,
+        });
+      }
       if (this.matteRefiner) {
         const refined = await this.matteRefiner.predictMask(rgb, input.width, input.height);
         subject = {
@@ -136,6 +146,7 @@ export class BackgroundRemovalProcessor {
       format: input.format,
       width: input.width,
       height: input.height,
+      subjectCutout: !preserved.usedGraphicFallback,
     });
 
     return {
