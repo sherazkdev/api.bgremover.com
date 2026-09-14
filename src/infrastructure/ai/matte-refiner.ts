@@ -116,7 +116,15 @@ export class MatteRefiner {
 export function mergeSubjectWithRefiner(subject: Uint8Array, refined: Uint8Array): Uint8Array {
   const output = new Uint8Array(subject.length);
   for (let i = 0; i < subject.length; i += 1) {
-    output[i] = Math.max(subject[i] ?? 0, refined[i] ?? 0);
+    const s = subject[i] ?? 0;
+    const r = refined[i] ?? 0;
+    if (s >= 96) {
+      output[i] = Math.max(s, r);
+    } else if (s >= 20) {
+      output[i] = Math.max(s, Math.min(r, s + 40));
+    } else {
+      output[i] = s;
+    }
   }
   return output;
 }

@@ -15,12 +15,17 @@ export function refinePersonMatte(
   width: number,
   height: number,
 ): Uint8Array {
-  const holeLimit = Math.max(64, Math.round(width * height * 0.00045));
-  const { color: background } = estimateBackgroundColor(rgb, width, height);
+  const { color: background, variance } = estimateBackgroundColor(rgb, width, height);
+  const outdoorLike = variance > 28;
+  const holeLimit = outdoorLike
+    ? Math.max(256, Math.round(width * height * 0.0012))
+    : Math.max(64, Math.round(width * height * 0.00045));
   let refined = peelBackgroundLikeTopBand(rgb, alpha, width, height, background);
   refined = restoreHairAgainstBackground(rgb, refined, width, height, background);
   refined = fillInteriorBackgroundHoles(refined, width, height, holeLimit);
-  refined = defringeAlpha(rgb, refined, width, height, background, 28);
+  if (!outdoorLike) {
+    refined = defringeAlpha(rgb, refined, width, height, background, 28);
+  }
   refined = refineAlphaMatte(refined);
   return refined;
 }

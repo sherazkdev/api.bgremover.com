@@ -190,17 +190,7 @@ export class ImageProcessor {
       const rgbBytes = rgb.data instanceof Uint8Array ? rgb.data : new Uint8Array(rgb.data);
       let refinedMask: Buffer;
       if (subjectCutout) {
-        const { color: background } = estimateBackgroundColor(rgbBytes, width, height);
-        refinedMask = Buffer.from(
-          defringeAlpha(
-            rgbBytes,
-            copyUint8(resizedMask),
-            width,
-            height,
-            background,
-            32,
-          ),
-        );
+        refinedMask = Buffer.from(refineAlphaMatte(copyUint8(resizedMask)));
       } else {
         const { colors: paperColors } = estimatePaperColors(rgbBytes, width, height);
         refinedMask = Buffer.from(
