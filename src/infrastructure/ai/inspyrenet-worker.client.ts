@@ -4,7 +4,12 @@ import type { Env } from '../../config/env.js';
 export class InspyrenetWorkerClient {
   private ready = false;
 
-  constructor(private readonly env: Pick<Env, 'INSPIRENET_WORKER_URL' | 'INSPIRENET_WORKER_TIMEOUT_MS'>) {}
+  constructor(
+    private readonly env: Pick<
+      Env,
+      'INSPIRENET_WORKER_URL' | 'INSPIRENET_WORKER_TIMEOUT_MS' | 'INSPIRENET_WORKER_TOKEN'
+    >,
+  ) {}
 
   public get baseUrl(): string {
     return this.env.INSPIRENET_WORKER_URL.replace(/\/+$/, '');
@@ -19,7 +24,10 @@ export class InspyrenetWorkerClient {
     let lastError = 'Worker not reachable';
     while (Date.now() < deadline) {
       try {
-        const response = await fetch(`${this.baseUrl}/health`, { signal: AbortSignal.timeout(5000) });
+        const response = await fetch(`${this.baseUrl}/health`, {
+          signal: AbortSignal.timeout(5000),
+          headers: this.authHeaders(),
+        });
         if (response.ok) {
           const body = (await response.json()) as { ready?: boolean };
           if (body.ready) {
@@ -59,6 +67,7 @@ export class InspyrenetWorkerClient {
       const response = await fetch(`${this.baseUrl}/remove`, {
         method: 'POST',
         headers: {
+          ...this.authHeaders(),
           'X-Request-Id': requestId,
           'Content-Type': 'application/octet-stream',
         },
@@ -89,6 +98,14 @@ export class InspyrenetWorkerClient {
     } finally {
       clearTimeout(timer);
     }
+  }
+
+  private authHeaders(): Record<string, string> {
+    const token = this.env.INSPIRENET_WORKER_TOKEN;
+    if (!token) {
+      return {};
+    }
+    return { Authorization: `Bearer ${token}` };
   }
 }
 

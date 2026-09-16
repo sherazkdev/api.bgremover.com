@@ -21,6 +21,8 @@ PORT = int(os.environ.get("INSPIRENET_WORKER_PORT", "8765"))
 HOST = os.environ.get("INSPIRENET_WORKER_HOST", "127.0.0.1")
 MODE = os.environ.get("INSPIRENET_MODE", "base")
 RESIZE = os.environ.get("INSPIRENET_RESIZE", "static")
+DEVICE = os.environ.get("INSPIRENET_DEVICE", "").strip()
+WORKER_TOKEN = os.environ.get("INSPIRENET_WORKER_TOKEN", "").strip()
 PNG_COMPRESS_LEVEL = int(os.environ.get("INSPIRENET_PNG_COMPRESS_LEVEL", "1"))
 
 remover = None
@@ -83,13 +85,51 @@ def read_image_bytes(content_type: str, body: bytes) -> bytes:
     raise ValueError("Expected multipart/form-data, application/octet-stream, or image/*")
 
 
+def model_device_str() -> str | None:
+    if remover is None:
+        return None
+    model = getattr(remover, "model", None)
+    if model is None:
+        return None
+    try:
+        return str(next(model.parameters()).device)
+    except StopIteration:
+        return None
+
+
+def gpu_memory_mb() -> dict[str, float | None]:
+    try:
+        import torch
+
+        if not torch.cuda.is_available():
+            return {"gpu_memory_allocated_mb": None, "gpu_memory_reserved_mb": None}
+        return {
+            "gpu_memory_allocated_mb": round(torch.cuda.memory_allocated() / (1024 * 1024), 1),
+            "gpu_memory_reserved_mb": round(torch.cuda.memory_reserved() / (1024 * 1024), 1),
+        }
+    except Exception:  # noqa: BLE001
+        return {"gpu_memory_allocated_mb": None, "gpu_memory_reserved_mb": None}
+
+
+def authorize(handler: BaseHTTPRequestHandler) -> bool:
+    if not WORKER_TOKEN:
+        return True
+    auth = handler.headers.get("Authorization", "")
+    if auth == f"Bearer {WORKER_TOKEN}":
+        return True
+    return handler.headers.get("X-Worker-Token", "") == WORKER_TOKEN
+
+
 def load_model() -> None:
     global remover, loaded_at, torch_threads
     torch_threads = configure_compute_threads()
     from transparent_background import Remover
 
     t0 = time.perf_counter()
-    remover = Remover(mode=MODE, resize=RESIZE)
+    remover_kwargs: dict[str, str] = {"mode": MODE, "resize": RESIZE}
+    if DEVICE:
+        remover_kwargs["device"] = DEVICE
+    remover = Remover(**remover_kwargs)
     loaded_at = time.perf_counter() - t0
     maybe_torch_compile(remover)
 
@@ -122,17 +162,26 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self) -> None:
         if self.path.rstrip("/") == "/health":
+            if not authorize(self):
+                self.send_error(401, "Unauthorized")
+                return
+            import torch
+
             body = {
                 "ready": remover is not None,
                 "mode": MODE,
                 "resize": RESIZE,
+                "device": DEVICE or "default",
                 "load_seconds": loaded_at,
                 "torch_threads": torch_threads,
                 "vps_cpu_limit": os.environ.get("INSPIRENET_VPS_CPU_LIMIT"),
                 "torch_compile": os.environ.get("INSPIRENET_TORCH_COMPILE", "0"),
+                "cuda_available": torch.cuda.is_available(),
+                "model_device": model_device_str(),
                 "pid": os.getpid(),
                 "rss_mb": process_rss_mb(),
                 "requests_served": getattr(Handler, "requests_served", 0),
+                **gpu_memory_mb(),
             }
             data = json.dumps(body).encode("utf-8")
             self.send_response(200)
@@ -146,6 +195,9 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self) -> None:
         if self.path.rstrip("/") != "/remove":
             self.send_error(404)
+            return
+        if not authorize(self):
+            self.send_error(401, "Unauthorized")
             return
         if remover is None:
             self.send_error(503, "Model not loaded")

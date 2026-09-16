@@ -4,6 +4,8 @@ Local REST API that removes image backgrounds with **BiRefNet Lite ONNX** throug
 
 Requires **Node.js 22+** and npm.
 
+**Production VPS (clone, build, PM2, nginx):** see [deploy/README.md](deploy/README.md).
+
 ## Local development
 
 ```bash
@@ -54,6 +56,8 @@ Copy `.env.example` and adjust as needed. Values are validated with Zod at start
 | `RATE_LIMIT_MAX`         | `30`                                | Max removal requests per window         |
 | `RATE_LIMIT_WINDOW`      | `1 minute`                          | Rate-limit window                       |
 | `HF_ENDPOINT`            | `https://huggingface.co`            | Hugging Face Hub or mirror for weights  |
+| `REMOVAL_PHOTO_ENGINE`   | `birefnet`                          | `birefnet` or `inspyrenet` (Python worker) |
+| `INSPIRENET_WORKER_URL`  | `http://127.0.0.1:8765`             | Loopback URL when engine is `inspyrenet` |
 
 `API_KEY` has no default. Local development needs at least 8 characters. Production requires at least 24. Generate one with `node -e "console.log(require('crypto').randomBytes(24).toString('hex'))"`.
 
