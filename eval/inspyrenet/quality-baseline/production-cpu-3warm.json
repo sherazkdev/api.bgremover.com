@@ -1,0 +1,163 @@
+{
+  "at": "2026-09-16T09:14:14Z",
+  "host": "13.140.131.209",
+  "pm2Before": {
+    "background-remover-api": {
+      "pid": 3910788,
+      "status": "online",
+      "restartCount": 10
+    },
+    "inspyrenet-worker": {
+      "pid": 3910582,
+      "status": "online",
+      "restartCount": 0
+    }
+  },
+  "workerHealthBefore": {
+    "ready": true,
+    "mode": "base",
+    "resize": "static",
+    "load_seconds": 82.60062878997996,
+    "torch_threads": 4,
+    "vps_cpu_limit": "4",
+    "torch_compile": "0",
+    "pid": 3910582,
+    "rss_mb": 1433.3,
+    "requests_served": 6
+  },
+  "images": [
+    {
+      "id": "beard-white-shirt",
+      "runs": [
+        {
+          "ok": true,
+          "wallMs": 28315,
+          "workerInferMs": 28315.0,
+          "queueWaitMs": 0.0,
+          "totalMs": 28315.0,
+          "stageMs": {}
+        },
+        {
+          "ok": true,
+          "wallMs": 26923,
+          "workerInferMs": 26923.0,
+          "queueWaitMs": 0.0,
+          "totalMs": 26923.0,
+          "stageMs": {}
+        },
+        {
+          "ok": true,
+          "wallMs": 26357,
+          "workerInferMs": 26357.0,
+          "queueWaitMs": 0.0,
+          "totalMs": 26357.0,
+          "stageMs": {}
+        }
+      ],
+      "median": {
+        "workerInferMs": 26923.0,
+        "queueWaitMs": 0.0,
+        "totalMs": 26923.0,
+        "wallMs": 26923
+      },
+      "slowestWallMs": 28315
+    },
+    {
+      "id": "sunglasses",
+      "runs": [
+        {
+          "ok": true,
+          "wallMs": 23675,
+          "workerInferMs": 23675.0,
+          "queueWaitMs": 0.0,
+          "totalMs": 23675.0,
+          "stageMs": {}
+        },
+        {
+          "ok": true,
+          "wallMs": 33170,
+          "workerInferMs": 33170.0,
+          "queueWaitMs": 0.0,
+          "totalMs": 33170.0,
+          "stageMs": {}
+        },
+        {
+          "ok": true,
+          "wallMs": 22012,
+          "workerInferMs": 22012.0,
+          "queueWaitMs": 0.0,
+          "totalMs": 22012.0,
+          "stageMs": {}
+        }
+      ],
+      "median": {
+        "workerInferMs": 23675.0,
+        "queueWaitMs": 0.0,
+        "totalMs": 23675.0,
+        "wallMs": 23675
+      },
+      "slowestWallMs": 33170
+    },
+    {
+      "id": "white-kurta-portrait",
+      "runs": [
+        {
+          "ok": true,
+          "wallMs": 21786,
+          "workerInferMs": 21786.0,
+          "queueWaitMs": 0.0,
+          "totalMs": 21786.0,
+          "stageMs": {}
+        },
+        {
+          "ok": true,
+          "wallMs": 21902,
+          "workerInferMs": 21902.0,
+          "queueWaitMs": 0.0,
+          "totalMs": 21902.0,
+          "stageMs": {}
+        },
+        {
+          "ok": true,
+          "wallMs": 22560,
+          "workerInferMs": 22560.0,
+          "queueWaitMs": 0.0,
+          "totalMs": 22560.0,
+          "stageMs": {}
+        }
+      ],
+      "median": {
+        "workerInferMs": 21902.0,
+        "queueWaitMs": 0.0,
+        "totalMs": 21902.0,
+        "wallMs": 21902
+      },
+      "slowestWallMs": 22560
+    }
+  ],
+  "peakWorkerRssMb": 1433.4,
+  "workerHealthAfter": {
+    "ready": true,
+    "mode": "base",
+    "resize": "static",
+    "load_seconds": 82.60062878997996,
+    "torch_threads": 4,
+    "vps_cpu_limit": "4",
+    "torch_compile": "0",
+    "pid": 3910582,
+    "rss_mb": 1433.4,
+    "requests_served": 18
+  },
+  "pm2After": {
+    "background-remover-api": {
+      "pid": 3910788,
+      "status": "online",
+      "restartCount": 10
+    },
+    "inspyrenet-worker": {
+      "pid": 3910582,
+      "status": "online",
+      "restartCount": 0
+    }
+  }
+}

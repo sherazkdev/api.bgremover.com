@@ -1,0 +1,25 @@
+{
+  "at": "2026-09-16T09:30:00Z",
+  "host": "13.140.131.209",
+  "method": "single loopback POST /remove-background sunglasses, person/hd/png",
+  "success": true,
+  "has_stageMs": true,
+  "model": "InSPyReNet",
+  "quality": "hd",
+  "inferenceMs": 28206.2,
+  "durationMs": 28473,
+  "stageMs": {
+    "queueWaitMs": 2,
+    "orientDecodeMs": 56,
+    "originalPersistMs": 52,
+    "processWallMs": 28412,
+    "parallelWallMs": 28413,
+    "resultPersistMs": 4,
+    "totalMs": 28473,
+    "workerRoundTripMs": 28377,
+    "workerDecodeMs": 55.1,
+    "workerInferMs": 28206.2,
+    "workerPngMs": 70.4,
+    "nodePostMs": 34
+  }
+}

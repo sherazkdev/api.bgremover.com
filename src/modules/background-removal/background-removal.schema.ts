@@ -95,6 +95,23 @@ export const removeBackgroundDataSchema = z.object({
     model: z.string(),
     quality: z.enum(QUALITY_MODES),
     durationMs: z.number().nonnegative(),
+    inferenceMs: z.number().nonnegative().optional(),
+    stageMs: z
+      .object({
+        queueWaitMs: z.number().nonnegative(),
+        orientDecodeMs: z.number().nonnegative(),
+        originalPersistMs: z.number().nonnegative(),
+        processWallMs: z.number().nonnegative(),
+        parallelWallMs: z.number().nonnegative(),
+        resultPersistMs: z.number().nonnegative(),
+        totalMs: z.number().nonnegative(),
+        workerRoundTripMs: z.number().nonnegative().optional(),
+        workerDecodeMs: z.number().nonnegative().optional(),
+        workerInferMs: z.number().nonnegative().optional(),
+        workerPngMs: z.number().nonnegative().optional(),
+        nodePostMs: z.number().nonnegative().optional(),
+      })
+      .optional(),
     mode: z.enum(REMOVAL_MODES),
     preserveText: z.boolean(),
     preserveLogos: z.boolean(),
@@ -221,6 +238,33 @@ const resultAssetOpenApi = {
   },
 } as const;
 
+const processingStageTimingOpenApi = {
+  type: 'object',
+  required: [
+    'queueWaitMs',
+    'orientDecodeMs',
+    'originalPersistMs',
+    'processWallMs',
+    'parallelWallMs',
+    'resultPersistMs',
+    'totalMs',
+  ],
+  properties: {
+    queueWaitMs: { type: 'number' },
+    orientDecodeMs: { type: 'number' },
+    originalPersistMs: { type: 'number' },
+    processWallMs: { type: 'number' },
+    parallelWallMs: { type: 'number' },
+    resultPersistMs: { type: 'number' },
+    totalMs: { type: 'number' },
+    workerRoundTripMs: { type: 'number' },
+    workerDecodeMs: { type: 'number' },
+    workerInferMs: { type: 'number' },
+    workerPngMs: { type: 'number' },
+    nodePostMs: { type: 'number' },
+  },
+} as const;
+
 const itemProcessingOpenApi = {
   type: 'object',
   required: [
@@ -240,6 +284,8 @@ const itemProcessingOpenApi = {
     model: { type: 'string' },
     quality: { type: 'string', enum: qualityEnum },
     durationMs: { type: 'number' },
+    inferenceMs: { type: 'number' },
+    stageMs: processingStageTimingOpenApi,
     mode: { type: 'string', enum: modeEnum },
     appliedMode: { type: 'string', enum: modeEnum },
     status: { type: 'string', enum: ['completed', 'needs_review', 'failed'] },
