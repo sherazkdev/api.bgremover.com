@@ -1,0 +1,32 @@
+# Example systemd unit — DO NOT install without ops approval.
+# Caps worker at 4 CPUs on a shared 12-vCPU VPS (other projects keep 8 vCPUs).
+#
+# Copy to /etc/systemd/system/inspyrenet-worker.service, adjust paths, then:
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now inspyrenet-worker
+#
+[Unit]
+Description=InSPyReNet loopback background removal worker
+After=network.target
+
+[Service]
+Type=simple
+User=www-data
+WorkingDirectory=/var/www/background-remover
+Environment=INSPIRENET_WORKER_HOST=127.0.0.1
+Environment=INSPIRENET_WORKER_PORT=8765
+Environment=INSPIRENET_MODE=base
+Environment=INSPIRENET_RESIZE=static
+Environment=INSPIRENET_VPS_CPU_LIMIT=4
+Environment=INSPIRENET_TORCH_THREADS=4
+Environment=INSPIRENET_PNG_COMPRESS_LEVEL=1
+# Optional after VPS probe validates parity: INSPIRENET_TORCH_COMPILE=1
+ExecStart=/var/www/background-remover/eval/inspyrenet/.venv/bin/python eval/inspyrenet/worker.py
+Restart=on-failure
+RestartSec=5
+# 4 vCPU equivalent — leaves 8 for other tenants on a 12-vCPU host
+CPUQuota=400%
+MemoryMax=8G
+
+[Install]
+WantedBy=multi-user.target

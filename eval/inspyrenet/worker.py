@@ -28,8 +28,23 @@ loaded_at: float | None = None
 torch_threads: int | None = None
 
 
+def process_rss_mb() -> float | None:
+    if sys.platform != "linux":
+        return None
+    try:
+        with open("/proc/self/status", encoding="utf-8") as f:
+            for line in f:
+                if line.startswith("VmRSS:"):
+                    return round(int(line.split()[1]) / 1024, 1)
+    except OSError:
+        return None
+    return None
+
+
 def configure_compute_threads() -> int:
-    n = int(os.environ.get("INSPYRENET_TORCH_THREADS", os.cpu_count() or 4))
+    budget = os.environ.get("INSPIRENET_VPS_CPU_LIMIT")
+    thread_default = int(budget) if budget else (os.cpu_count() or 4)
+    n = int(os.environ.get("INSPYRENET_TORCH_THREADS", thread_default))
     for key in ("OMP_NUM_THREADS", "MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS", "NUMEXPR_NUM_THREADS"):
         os.environ.setdefault(key, str(n))
     import torch
@@ -76,6 +91,26 @@ def load_model() -> None:
     t0 = time.perf_counter()
     remover = Remover(mode=MODE, resize=RESIZE)
     loaded_at = time.perf_counter() - t0
+    maybe_torch_compile(remover)
+
+
+def maybe_torch_compile(remover: object) -> None:
+    flag = os.environ.get("INSPIRENET_TORCH_COMPILE", "").lower()
+    if flag not in ("1", "true", "yes"):
+        return
+    import torch
+
+    if not hasattr(torch, "compile"):
+        sys.stderr.write("INSPIRENET_TORCH_COMPILE set but torch.compile unavailable\n")
+        return
+    model = getattr(remover, "model", None)
+    if model is None:
+        return
+    try:
+        remover.model = torch.compile(model, mode="default")  # type: ignore[attr-defined]
+        sys.stderr.write("torch.compile enabled on InSPyReNet model\n")
+    except Exception as exc:  # noqa: BLE001
+        sys.stderr.write(f"torch.compile skipped: {exc}\n")
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -93,6 +128,10 @@ class Handler(BaseHTTPRequestHandler):
                 "resize": RESIZE,
                 "load_seconds": loaded_at,
                 "torch_threads": torch_threads,
+                "vps_cpu_limit": os.environ.get("INSPIRENET_VPS_CPU_LIMIT"),
+                "torch_compile": os.environ.get("INSPIRENET_TORCH_COMPILE", "0"),
+                "pid": os.getpid(),
+                "rss_mb": process_rss_mb(),
                 "requests_served": getattr(Handler, "requests_served", 0),
             }
             data = json.dumps(body).encode("utf-8")

@@ -11,6 +11,7 @@
     "dev": "tsx watch src/server.ts",
     "worker:inspyrenet": "eval/inspyrenet/.venv/Scripts/python.exe eval/inspyrenet/worker.py",
     "bench:inspyrenet:stage1": "node --import tsx/esm eval/inspyrenet/stage1-api-benchmark.mjs",
+    "probe:inspyrenet:runtime": "eval/inspyrenet/.venv/Scripts/python.exe eval/inspyrenet/probe_optimized_runtime.py",
     "worker:inspyrenet:resolve": "node eval/inspyrenet/scripts/resolve-worker.mjs",
     "worker:inspyrenet:unix": "eval/inspyrenet/.venv/bin/python eval/inspyrenet/worker.py",
     "build": "tsc -p tsconfig.json",

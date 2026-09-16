@@ -59,9 +59,22 @@ async function postPerson(file) {
     headers: { ...multipart.headers, 'x-api-key': API_KEY },
     body: multipart.payload,
   });
-  const wallMs = performance.now() - wallStarted;
   const json = await resp.json();
-  return { ok: resp.ok && json.success, wallMs, data: json.data };
+  let downloadMs = 0;
+  if (json.success && json.data?.result?.url) {
+    const dlStart = performance.now();
+    const dl = await fetch(json.data.result.url);
+    await dl.arrayBuffer();
+    downloadMs = performance.now() - dlStart;
+  }
+  const wallMs = performance.now() - wallStarted;
+  return {
+    ok: resp.ok && json.success,
+    wallMs,
+    downloadMs: Math.round(downloadMs),
+    cutoutReadyMs: Math.round(wallMs),
+    data: json.data,
+  };
 }
 
 async function main() {
@@ -70,7 +83,21 @@ async function main() {
     throw new Error('API/worker not ready — check /health/ready and resolve-worker.mjs');
   }
 
-  const report = { at: new Date().toISOString(), ready: ready.data, images: [] };
+  const workerHealth = await fetch(
+    (process.env.INSPIRENET_WORKER_URL ?? 'http://127.0.0.1:8765').replace(/\/+$/, '') + '/health',
+  )
+    .then((r) => r.json())
+    .catch(() => null);
+
+  const report = {
+    at: new Date().toISOString(),
+    environment: {
+      note: 'Run on VPS for authoritative numbers; label host in vps-benchmark filename',
+      workerHealth,
+    },
+    ready: ready.data,
+    images: [],
+  };
 
   for (const img of IMAGES) {
     const runs = [];
@@ -84,14 +111,17 @@ async function main() {
       id: img.id,
       file: img.file,
       runs: okRuns.map((r) => ({
-        wallMs: Math.round(r.wallMs),
+        cutoutReadyMs: Math.round(r.cutoutReadyMs),
+        downloadMs: r.downloadMs,
         totalMs: r.data.processing.stageMs.totalMs,
         stageMs: r.data.processing.stageMs,
         inferenceMs: r.data.processing.inferenceMs,
       })),
+      slowestCutoutReadyMs: okRuns.length ? Math.max(...okRuns.map((r) => r.cutoutReadyMs)) : null,
       median: okRuns.length
         ? {
-            wallMs: median(okRuns.map((r) => r.wallMs)),
+            cutoutReadyMs: median(okRuns.map((r) => r.cutoutReadyMs)),
+            downloadMs: median(okRuns.map((r) => r.downloadMs)),
             totalMs: med('totalMs'),
             queueWaitMs: med('queueWaitMs'),
             orientDecodeMs: med('orientDecodeMs'),

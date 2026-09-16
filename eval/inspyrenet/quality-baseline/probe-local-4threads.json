@@ -1,0 +1,25 @@
+﻿Settings -> Mode=base, Device=cpu, Torchscript=disabled
+Settings -> Mode=base, Device=cpu, Torchscript=disabled
+{
+  "platform": "win32",
+  "cpu_count": 8,
+  "threads_tested": 4,
+  "onnx": {
+    "ok": false,
+    "error": "No module named 'onnxscript'"
+  },
+  "baseline": {
+    "ok": true,
+    "threads": 4,
+    "torch_compile": false,
+    "load_s": 4.66,
+    "warm_ms": [
+      44066.2,
+      26870.6,
+      26233.0,
+      27227.2
+    ],
+    "warm_ms_median": 27227.2,
+    "peak_rss_mb": null
+  }
+}
