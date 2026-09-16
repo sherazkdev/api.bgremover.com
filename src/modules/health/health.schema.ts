@@ -46,6 +46,14 @@ export const readyResponseOpenApi = {
             ready: { type: 'boolean' },
           },
         },
+        photoEngine: { type: 'string', enum: ['birefnet', 'inspyrenet'] },
+        inspyrenetWorker: {
+          type: 'object',
+          properties: {
+            ready: { type: 'boolean' },
+            url: { type: 'string', nullable: true },
+          },
+        },
         timestamp: { type: 'string', format: 'date-time' },
       },
     },

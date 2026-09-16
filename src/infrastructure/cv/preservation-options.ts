@@ -36,15 +36,15 @@ export function resolvePreservationOptions(
   if (mode === 'person' || mode === 'product' || mode === 'object') {
     return {
       preserveText: preserveText ?? false,
-      preserveLogos: preserveLogos ?? false,
-      preserveTextContainers: preserveTextContainers ?? false,
+      preserveLogos: preserveLogos ?? true,
+      preserveTextContainers: preserveTextContainers ?? true,
     };
   }
 
   return {
     preserveText: preserveText ?? false,
-    preserveLogos: preserveLogos ?? false,
-    preserveTextContainers: preserveTextContainers ?? false,
+    preserveLogos: preserveLogos ?? true,
+    preserveTextContainers: preserveTextContainers ?? true,
   };
 }
 

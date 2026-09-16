@@ -1,0 +1,19 @@
+﻿Settings -> Mode=base, Device=cpu, Torchscript=disabled
+Settings -> Mode=base, Device=cpu, Torchscript=disabled
+{
+  "cpu_count": 8,
+  "results": [
+    {
+      "threads": 4,
+      "warm_ms_avg": 33483.7,
+      "warm_ms_min": 27853.4,
+      "samples": 4
+    },
+    {
+      "threads": 8,
+      "warm_ms_avg": 31205.8,
+      "warm_ms_min": 29106.6,
+      "samples": 4
+    }
+  ]
+}

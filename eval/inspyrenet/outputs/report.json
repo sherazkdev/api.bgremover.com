@@ -1,0 +1,67 @@
+{
+  "cases": [
+    {
+      "name": "beard-white-shirt",
+      "ok": true,
+      "input": ".test-images\\confident-young-western-european-businessman-professional-office-attire-stockgraphy-for-corporate-use-photo.jpg",
+      "output": "eval\\inspyrenet\\outputs\\beard-white-shirt.png",
+      "width": 1249,
+      "height": 700,
+      "warm_ms": 25174.2,
+      "transparent_pct": 75.7,
+      "opaque_pct": 23.65,
+      "exif_orientation": null
+    },
+    {
+      "name": "sunglasses",
+      "ok": true,
+      "input": ".test-images\\sunglasses-square-800.jpg",
+      "output": "eval\\inspyrenet\\outputs\\sunglasses.png",
+      "width": 800,
+      "height": 800,
+      "warm_ms": 23693.5,
+      "transparent_pct": 61.84,
+      "opaque_pct": 36.74,
+      "exif_orientation": null
+    },
+    {
+      "name": "white-kurta",
+      "ok": true,
+      "input": ".test-images\\synth-tall-kurta.jpg",
+      "output": "eval\\inspyrenet\\outputs\\white-kurta.png",
+      "width": 540,
+      "height": 960,
+      "warm_ms": 21224.0,
+      "transparent_pct": 81.58,
+      "opaque_pct": 17.66,
+      "exif_orientation": null
+    },
+    {
+      "name": "OIP",
+      "ok": true,
+      "input": ".test-images\\OIP.webp",
+      "output": "eval\\inspyrenet\\outputs\\OIP.png",
+      "width": 474,
+      "height": 589,
+      "warm_ms": 24499.3,
+      "transparent_pct": 61.85,
+      "opaque_pct": 36.75,
+      "exif_orientation": null
+    },
+    {
+      "name": "studio",
+      "ok": true,
+      "input": ".test-images\\synth-studio-portrait.jpg",
+      "output": "eval\\inspyrenet\\outputs\\studio.png",
+      "width": 480,
+      "height": 640,
+      "warm_ms": 28064.3,
+      "transparent_pct": 78.75,
+      "opaque_pct": 20.82,
+      "exif_orientation": null
+    }
+  ],
+  "cold_init_ms": 81906.4,
+  "peak_mb": 39.1,
+  "peak_mb_after_init": 16.0
+}

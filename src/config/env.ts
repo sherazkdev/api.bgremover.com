@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+import { PHOTO_REMOVAL_ENGINES } from './constants.js';
+
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   HOST: z.string().min(1).default('0.0.0.0'),
@@ -24,6 +26,9 @@ const envSchema = z.object({
   RATE_LIMIT_WINDOW: z.string().min(1).default('1 minute'),
   HF_ENDPOINT: z.string().url().default('https://huggingface.co'),
   MATTE_REFINER_PATH: z.string().min(1).optional(),
+  REMOVAL_PHOTO_ENGINE: z.enum(PHOTO_REMOVAL_ENGINES).default('birefnet'),
+  INSPIRENET_WORKER_URL: z.string().url().default('http://127.0.0.1:8765'),
+  INSPIRENET_WORKER_TIMEOUT_MS: z.coerce.number().int().min(5000).max(600_000).default(180_000),
 });
 
 export type Env = z.infer<typeof envSchema>;

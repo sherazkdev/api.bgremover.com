@@ -37,7 +37,9 @@ export function refinePersonMatte(
     refined = peelExteriorForeground(rgb, refined, width, height, background);
   }
   refined = restoreHairAgainstBackground(rgb, refined, width, height, background);
-  refined = fillInteriorBackgroundHoles(refined, width, height, holeLimit);
+  if (!outdoorLike) {
+    refined = fillInteriorBackgroundHoles(refined, width, height, holeLimit);
+  }
   if (!outdoorLike || greenScreenLike(background)) {
     refined = defringeAlpha(
       rgb,
@@ -118,10 +120,11 @@ function isBackgroundColoredPixel(
   const color = readRgb(rgb, index);
   const lum = luminance(color.r, color.g, color.b);
   const sat = saturation(color.r, color.g, color.b);
+  const dist = chebyshev(color, background);
   if (lum > 168 && sat < 0.16) {
-    return false;
+    return dist < 48;
   }
-  return chebyshev(color, background) < 38 && sat < 0.26;
+  return dist < 38 && sat < 0.26;
 }
 
 function isPersonSeedPixel(rgb: Uint8Array, index: number, background: RgbColor): boolean {
@@ -185,7 +188,10 @@ function shrinkBloatedForeground(
       if (keep[next] || (alpha[next] ?? 0) < 48) {
         continue;
       }
-      if ((core[next] ?? 0) < 48 && isBackgroundColoredPixel(rgb, next, background)) {
+      if (
+        isBackgroundColoredPixel(rgb, next, background) &&
+        !isPersonSeedPixel(rgb, next, background)
+      ) {
         continue;
       }
       keep[next] = 1;

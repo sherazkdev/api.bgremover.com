@@ -1,0 +1,26 @@
+{
+  "frozenAt": "2026-09-16",
+  "purpose": "Quality baseline before performance pass — do not change checkpoint, mode, resize, or inference math.",
+  "package": "transparent-background==1.3.4",
+  "workerConfig": {
+    "INSPYRENET_MODE": "base",
+    "INSPYRENET_RESIZE": "static",
+    "jit": false,
+    "device": "cpu",
+    "Remover.process": { "type": "rgba", "threshold": null }
+  },
+  "checkpoint": {
+    "name": "ckpt_base.pth",
+    "md5": "d692e3dd5fa1b9658949d452bebf1cda",
+    "source": "transparent-background config.yaml (base mode)"
+  },
+  "representativeOutputs": {
+    "beard-white-shirt": "beard-white-shirt.png",
+    "sunglasses": "sunglasses.png",
+    "white-kurta-portrait": "white-kurta-portrait.png",
+    "white-kurta-synth-regression-only": "white-kurta.png",
+    "OIP": "OIP.png",
+    "studio": "studio.png"
+  },
+  "sourceOutputsDir": "../outputs"
+}

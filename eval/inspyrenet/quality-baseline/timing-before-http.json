@@ -1,0 +1,19 @@
+{
+  "note": "Pre-optimization warm HTTP (REMOVAL_PHOTO_ENGINE=inspyrenet, CPU, 8 logical cores, torch default 4 threads)",
+  "source": "tmp-verify/inspyrenet-handoff/report.json",
+  "apiWallMsPersonHd": {
+    "beard-white-shirt": 26579,
+    "sunglasses": 27548,
+    "white-kurta": 23616,
+    "OIP": 31447
+  },
+  "workerInferMsReported": {
+    "beard-white-shirt": 26527,
+    "sunglasses": 27499,
+    "white-kurta": 23588
+  },
+  "standaloneEvalWarmMs": {
+    "source": "eval/inspyrenet/outputs/report.json",
+    "range": "21224-28064"
+  }
+}

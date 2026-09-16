@@ -2,6 +2,7 @@ import sharp from 'sharp';
 
 import type { RemovalMode } from '../../config/constants.js';
 import type { AlphaMatte } from '../ai/types.js';
+import { analyzeSceneBackground } from './scene-analysis.js';
 import { fuseForegroundMasks } from './mask-fusion.js';
 import { detectOverlays } from './overlay-detector.js';
 import {
@@ -63,7 +64,7 @@ export class ForegroundPreserver {
     );
     return fuseForegroundMasks({
       subjectMask,
-      overlays: overlays ?? emptyOverlays(subjectMask.length),
+      overlays: overlays ?? emptyOverlays(subjectMask.length, rgb, width, height),
       rgb,
       width,
       height,
@@ -126,16 +127,20 @@ async function resizeMaskTo(
   return new Uint8Array(resized);
 }
 
-function emptyOverlays(length: number) {
+function emptyOverlays(length: number, rgb?: Uint8Array, width?: number, height?: number) {
   const empty = new Uint8Array(length);
+  const scene =
+    rgb && width && height
+      ? analyzeSceneBackground(rgb, width, height)
+      : { color: { r: 0, g: 0, b: 0 } as const, variance: 0 };
   return {
     textMask: empty,
     textContainerMask: empty,
     logoAndOverlayMask: empty,
     backgroundSubtractMask: empty,
     analysis: {
-      background: { r: 0, g: 0, b: 0 },
-      backgroundVariance: 0,
+      background: scene.color,
+      backgroundVariance: scene.variance,
       graphicScore: 0,
       textCoverage: 0,
       containerCoverage: 0,

@@ -40,6 +40,10 @@ export const DEFAULT_MODEL_INPUT_SIZE = 512;
 export const MODEL_DISPLAY_NAME_LITE = 'BiRefNet Lite';
 export const MODEL_DISPLAY_NAME_FULL = 'BiRefNet';
 export const MODEL_DISPLAY_NAME_GRAPHIC = 'Graphic Cutout';
+export const MODEL_DISPLAY_NAME_INSPYRENET = 'InSPyReNet';
+
+export const PHOTO_REMOVAL_ENGINES = ['birefnet', 'inspyrenet'] as const;
+export type PhotoRemovalEngine = (typeof PHOTO_REMOVAL_ENGINES)[number];
 
 export const REQUEST_TIMEOUT_MS = 180_000;
 export const BODY_LIMIT_BYTES = 12 * 1024 * 1024;

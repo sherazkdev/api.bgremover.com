@@ -48,6 +48,18 @@ async function main(): Promise<void> {
       'failed to initialize background-removal model',
     );
   });
+
+  if (env.REMOVAL_PHOTO_ENGINE === 'inspyrenet' && app.inspyrenetClient) {
+    void app.inspyrenetClient.initialize().catch((error: unknown) => {
+      app.log.error(
+        {
+          err: error instanceof Error ? error.message : 'unknown worker error',
+          workerUrl: env.INSPIRENET_WORKER_URL,
+        },
+        'failed to initialize InSPyReNet worker',
+      );
+    });
+  }
 }
 
 void main();

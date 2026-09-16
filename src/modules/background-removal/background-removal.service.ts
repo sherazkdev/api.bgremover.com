@@ -34,6 +34,7 @@ import type {
   BulkRemoveBackgroundItem,
   RemoveBackgroundJsonResponse,
   PerImageRemovalOptions,
+  ProcessingStageTiming,
   RemoveBackgroundOptions,
   RemoveBackgroundResult,
   RemoveBackgroundsJsonResponse,
@@ -111,10 +112,11 @@ export class BackgroundRemovalService {
     if (prepared.length > 0) {
       try {
         processed = await this.queue.add(() => {
-          const concurrency = Math.min(
-            prepared.length,
-            Math.max(this.env.BG_REMOVAL_CONCURRENCY, BULK_PROCESS_CONCURRENCY),
-          );
+          const maxParallel =
+            this.env.REMOVAL_PHOTO_ENGINE === 'inspyrenet'
+              ? this.env.BG_REMOVAL_CONCURRENCY
+              : Math.max(this.env.BG_REMOVAL_CONCURRENCY, BULK_PROCESS_CONCURRENCY);
+          const concurrency = Math.min(prepared.length, maxParallel);
           return mapLimit(prepared, concurrency, async (item) => {
             try {
               const itemOptions = resolveItemOptions(options, item.index, perImageOptions);
@@ -284,42 +286,75 @@ export class BackgroundRemovalService {
     const queueWaitMs = Date.now() - enqueuedAt;
     const totalStarted = Date.now();
 
+    const orientStarted = Date.now();
     const oriented = await this.imageProcessor.orientAndDecode(prepared.validated.buffer);
-    const [originalStored, processed] = await Promise.all([
-      this.storage.saveAtomic(prepared.originalRelativePath, prepared.validated.buffer),
-      this.processor.process({
-        orientedBuffer: oriented.buffer,
-        orientedRgb: oriented.rgb,
-        width: oriented.width,
-        height: oriented.height,
-        quality: options.quality,
-        format: options.format,
-        mode: itemOptions.mode,
-        preservation: itemOptions.preservation,
-      }),
-    ]);
+    const orientDecodeMs = Date.now() - orientStarted;
 
+    const parallelStarted = Date.now();
+    const [originalStored, processed] = await Promise.all([
+      (async () => {
+        const started = Date.now();
+        const stored = await this.storage.saveAtomic(
+          prepared.originalRelativePath,
+          prepared.validated.buffer,
+        );
+        return { stored, ms: Date.now() - started };
+      })(),
+      (async () => {
+        const started = Date.now();
+        const result = await this.processor.process({
+          orientedBuffer: oriented.buffer,
+          orientedRgb: oriented.rgb,
+          width: oriented.width,
+          height: oriented.height,
+          quality: options.quality,
+          format: options.format,
+          mode: itemOptions.mode,
+          preservation: itemOptions.preservation,
+          requestId: prepared.id,
+        });
+        return { result, ms: Date.now() - started };
+      })(),
+    ]);
+    const processWallMs = processed.ms;
+    const originalPersistMs = originalStored.ms;
+
+    const parallelWallMs = Date.now() - parallelStarted;
+    const resultPersistStarted = Date.now();
     const resultStored = await this.storage.saveAtomic(
       prepared.resultRelativePath,
-      processed.buffer,
+      processed.result.buffer,
     );
+    const resultPersistMs = Date.now() - resultPersistStarted;
+    const processedResult = processed.result;
 
     const durationMs = Date.now() - totalStarted;
+    const stageMs: ProcessingStageTiming = {
+      queueWaitMs,
+      orientDecodeMs,
+      originalPersistMs,
+      processWallMs,
+      parallelWallMs,
+      resultPersistMs,
+      totalMs: durationMs,
+      ...(processedResult.stageMs ?? {}),
+    };
     logger?.info(
       {
         imageId: prepared.id,
         width: oriented.width,
         height: oriented.height,
-        inputSize: originalStored.size,
+        inputSize: originalStored.stored.size,
         outputSize: resultStored.size,
         quality: options.quality,
         format: options.format,
         mode: options.mode,
         preserveText: options.preserveText,
-        textPreserved: processed.textPreserved,
+        textPreserved: processedResult.textPreserved,
         queueWaitMs,
-        inferenceMs: processed.inferenceMs,
+        inferenceMs: processedResult.inferenceMs,
         durationMs,
+        stageMs,
       },
       'background removed',
     );
@@ -331,33 +366,35 @@ export class BackgroundRemovalService {
         mimeType: prepared.validated.mimeType,
         width: oriented.width,
         height: oriented.height,
-        size: originalStored.size,
+        size: originalStored.stored.size,
       },
       result: {
         url: buildPublicUrl(this.env.PUBLIC_BASE_URL, prepared.resultRelativePath),
-        mimeType: processed.mimeType,
-        width: processed.width,
-        height: processed.height,
+        mimeType: processedResult.mimeType,
+        width: processedResult.width,
+        height: processedResult.height,
         size: resultStored.size,
-        hasTransparency: processed.hasTransparency,
+        hasTransparency: processedResult.hasTransparency,
       },
       processing: {
-        model: processed.modelName,
+        model: processedResult.modelName,
         quality: options.quality,
         durationMs,
+        inferenceMs: processedResult.inferenceMs,
+        stageMs,
         mode: itemOptions.mode,
         appliedMode: itemOptions.mode,
-        status: processed.needsReview ? 'needs_review' : 'completed',
+        status: processedResult.needsReview ? 'needs_review' : 'completed',
         preserveText: itemOptions.preservation.preserveText,
         preserveLogos: itemOptions.preservation.preserveLogos,
         preserveTextContainers: itemOptions.preservation.preserveTextContainers,
-        textPreserved: processed.textPreserved,
-        needsReview: processed.needsReview,
+        textPreserved: processedResult.textPreserved,
+        needsReview: processedResult.needsReview,
       },
       createdAt: prepared.createdAt.toISOString(),
       originalRelativePath: prepared.originalRelativePath,
       resultRelativePath: prepared.resultRelativePath,
-      resultBuffer: processed.buffer,
+      resultBuffer: processedResult.buffer,
     };
   }
 

@@ -7,7 +7,7 @@ import { invalidApiKeyError } from '../shared/errors/app-error.js';
 
 export function registerApiKeyAuth(app: FastifyInstance, env: Env): void {
   app.addHook('onRequest', async (request) => {
-    if (isPublicRequest(request, env.API_PREFIX)) {
+    if (isPublicRequest(request, env.API_PREFIX, env.NODE_ENV === 'development')) {
       return;
     }
     if (!apiKeyMatches(readApiKeyHeader(request), env.API_KEY)) {
@@ -19,6 +19,7 @@ export function registerApiKeyAuth(app: FastifyInstance, env: Env): void {
 export function isPublicRequest(
   request: Pick<FastifyRequest, 'method' | 'url'>,
   apiPrefix: string,
+  allowDebugAssets = false,
 ): boolean {
   if (request.method === 'OPTIONS') {
     return true;
@@ -32,6 +33,9 @@ export function isPublicRequest(
     return true;
   }
   if (path.startsWith('/uploads/')) {
+    return true;
+  }
+  if (allowDebugAssets && path.startsWith('/debug/')) {
     return true;
   }
 

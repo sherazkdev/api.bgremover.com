@@ -7,6 +7,7 @@ coverage
 public/uploads/originals/**
 public/uploads/processed/**
 public/uploads/archives/**
+public/debug/**
 public/uploads/poster-preview*.png
 !public/uploads/originals/.gitkeep
 !public/uploads/processed/.gitkeep
@@ -21,6 +22,9 @@ checkpoints/
 reports/
 models/custom/
 training/.venv/
+eval/birefnet-full/.venv/
+eval/inspyrenet/.venv/
+tmp-verify/
 *.pt
 *.pth
 training/runs/

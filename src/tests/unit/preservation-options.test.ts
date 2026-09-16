@@ -29,12 +29,12 @@ describe('resolvePreservationOptions', () => {
     });
   });
 
-  it('defaults overlay preservation off unless explicitly requested', () => {
+  it('defaults text off and logos/containers on for subject cutouts', () => {
     const options = resolvePreservationOptions('person', {});
     expect(options).toEqual({
       preserveText: false,
-      preserveLogos: false,
-      preserveTextContainers: false,
+      preserveLogos: true,
+      preserveTextContainers: true,
     });
   });
 });

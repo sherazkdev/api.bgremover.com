@@ -481,6 +481,8 @@ export function renderIndexPage(env: Env): string {
     .check-row input { margin-top: 3px; accent-color: var(--primary); }
     .check-row span { font-size: 13px; font-weight: 700; }
     .check-row small { display: block; color: var(--muted); font-weight: 500; }
+    .check-row.disabled { opacity: 0.55; }
+    .check-row.disabled input { pointer-events: none; }
     .counter {
       margin: 10px 0 0;
       font-size: 13px;
@@ -698,7 +700,7 @@ export function renderIndexPage(env: Env): string {
           </div>
         </div>
         <label class="check-row" for="preserve-text">
-          <input id="preserve-text" type="checkbox" checked />
+          <input id="preserve-text" type="checkbox" />
           <span>Preserve text<small>Keeps original lettering during person/object cutouts and mixed graphics.</small></span>
         </label>
         <label class="check-row" for="preserve-logos">
@@ -707,7 +709,7 @@ export function renderIndexPage(env: Env): string {
         </label>
         <label class="check-row" for="preserve-containers">
           <input id="preserve-containers" type="checkbox" checked />
-          <span>Preserve text containers<small>Keeps colored ribbons, cards, and label backgrounds. Off by default in text-background mode.</small></span>
+          <span>Preserve text containers<small>Requires “Preserve text”. Keeps caption ribbons and label backgrounds when lettering is detected.</small></span>
         </label>
 
         <button id="run" class="primary" type="button">
@@ -892,8 +894,59 @@ export function renderIndexPage(env: Env): string {
     const preserveTextInput = document.getElementById('preserve-text');
     const preserveLogosInput = document.getElementById('preserve-logos');
     const preserveContainersInput = document.getElementById('preserve-containers');
+
+    function syncPreservationControls() {
+      const textOn = preserveTextInput.checked;
+      preserveContainersInput.disabled = !textOn;
+      preserveContainersInput.closest('label')?.classList.toggle('disabled', !textOn);
+      if (!textOn) {
+        preserveContainersInput.checked = false;
+      }
+    }
+    preserveTextInput.addEventListener('change', syncPreservationControls);
+    syncPreservationControls();
     const resultFrame = document.getElementById('result-frame');
     const previewBg = document.getElementById('preview-bg');
+    let resultDownloadUrl = '';
+    let resultDownloadName = 'background-removed.png';
+
+    function resolveAssetUrl(url) {
+      try {
+        const parsed = new URL(url, window.location.origin);
+        return parsed.pathname + parsed.search;
+      } catch {
+        return url;
+      }
+    }
+
+    async function downloadAsset(url, filename, button) {
+      const assetUrl = resolveAssetUrl(url);
+      const previousLabel = button && button.textContent;
+      if (button) {
+        button.disabled = true;
+        button.textContent = 'Downloading…';
+      }
+      try {
+        const response = await fetch(assetUrl);
+        if (!response.ok) {
+          throw new Error('Download failed (' + response.status + ')');
+        }
+        const blob = await response.blob();
+        const blobUrl = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = blobUrl;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        URL.revokeObjectURL(blobUrl);
+      } finally {
+        if (button) {
+          button.disabled = false;
+          if (previousLabel) button.textContent = previousLabel;
+        }
+      }
+    }
     const maxBulk = ${maxBulk};
     const tabSingle = document.getElementById('tab-single');
     const tabBatch = document.getElementById('tab-batch');
@@ -929,26 +982,97 @@ export function renderIndexPage(env: Env): string {
       return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
     }
 
+    let selectedSingleFile = null;
+    let originalPreviewUrl = '';
+
+    function isImageFile(file) {
+      if (!file) return false;
+      if (/^image\\/(jpeg|png|webp)$/i.test(file.type)) return true;
+      return /\\.(jpe?g|png|webp)$/i.test(file.name || '');
+    }
+
+    function pickImageFromList(fileList) {
+      const files = Array.from(fileList || []);
+      return files.find(isImageFile) || null;
+    }
+
+    function revokeOriginalPreview() {
+      if (originalPreviewUrl) {
+        URL.revokeObjectURL(originalPreviewUrl);
+        originalPreviewUrl = '';
+      }
+    }
+
+    function syncFileInput(file) {
+      try {
+        const transfer = new DataTransfer();
+        transfer.items.add(file);
+        fileInput.files = transfer.files;
+      } catch {
+        fileInput.value = '';
+      }
+    }
+
+    function clearResultPreview() {
+      const out = document.getElementById('out');
+      resultDownloadUrl = '';
+      downloadBtn.disabled = true;
+      out.hidden = true;
+      out.removeAttribute('src');
+      document.getElementById('meta').hidden = true;
+      document.getElementById('err').hidden = true;
+      resultEmpty.querySelector('p').textContent = 'The transparent cutout will appear here.';
+      resultEmpty.hidden = false;
+    }
+
     function showFile(file) {
-      const url = URL.createObjectURL(file);
-      fileThumb.src = url;
-      original.src = url;
+      const err = document.getElementById('err');
+      if (!isImageFile(file)) {
+        err.textContent = 'Only PNG, JPG, or WEBP images are supported.';
+        err.hidden = false;
+        return;
+      }
+      err.hidden = true;
+      selectedSingleFile = file;
+      syncFileInput(file);
+      revokeOriginalPreview();
+      originalPreviewUrl = URL.createObjectURL(file);
+      fileThumb.src = originalPreviewUrl;
+      original.src = originalPreviewUrl;
       original.hidden = false;
       originalEmpty.hidden = true;
       document.getElementById('file-name').textContent = file.name;
       document.getElementById('file-size').textContent = formatSize(file.size);
       fileRow.hidden = false;
+      clearResultPreview();
     }
 
     function clearFile() {
+      selectedSingleFile = null;
       fileInput.value = '';
+      revokeOriginalPreview();
       fileRow.hidden = true;
       original.hidden = true;
       originalEmpty.hidden = false;
       original.removeAttribute('src');
       fileThumb.removeAttribute('src');
+      clearResultPreview();
     }
 
+    function acceptSingleDrop(event) {
+      event.preventDefault();
+      event.stopPropagation();
+      const file = pickImageFromList(event.dataTransfer && event.dataTransfer.files);
+      if (file) showFile(file);
+    }
+
+    window.addEventListener(
+      'dragover',
+      (event) => {
+        event.preventDefault();
+      },
+      false,
+    );
     fileInput.addEventListener('change', () => {
       const file = fileInput.files[0];
       if (file) showFile(file);
@@ -960,23 +1084,34 @@ export function renderIndexPage(env: Env): string {
     ;['dragenter', 'dragover'].forEach((type) => {
       drop.addEventListener(type, (event) => {
         event.preventDefault();
+        event.stopPropagation();
         drop.classList.add('drag');
       });
     });
-    ;['dragleave', 'drop'].forEach((type) => {
-      drop.addEventListener(type, (event) => {
-        event.preventDefault();
-        drop.classList.remove('drag');
-      });
+    drop.addEventListener('dragleave', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      drop.classList.remove('drag');
     });
     drop.addEventListener('drop', (event) => {
-      const file = event.dataTransfer && event.dataTransfer.files[0];
-      if (!file) return;
-      const transfer = new DataTransfer();
-      transfer.items.add(file);
-      fileInput.files = transfer.files;
-      showFile(file);
+      drop.classList.remove('drag');
+      acceptSingleDrop(event);
     });
+
+    const previewCard = document.querySelector('.preview-card');
+    if (previewCard) {
+      ;['dragenter', 'dragover'].forEach((type) => {
+        previewCard.addEventListener(type, (event) => {
+          if (view !== 'single') return;
+          event.preventDefault();
+          event.stopPropagation();
+        });
+      });
+      previewCard.addEventListener('drop', (event) => {
+        if (view !== 'single') return;
+        acceptSingleDrop(event);
+      });
+    }
 
     async function copyText(value) {
       await navigator.clipboard.writeText(value);
@@ -986,11 +1121,52 @@ export function renderIndexPage(env: Env): string {
     document.getElementById('copy-bulk-endpoint').addEventListener('click', () => copyText(bulkUrl));
     document.getElementById('copy-bulk-curl').addEventListener('click', () => copyText(bulkCurlCommand));
 
+    function armResultDownload(url) {
+      resultDownloadUrl = resolveAssetUrl(url);
+      resultDownloadName = 'background-removed.' + (formatInput.value || 'png');
+      downloadBtn.disabled = false;
+    }
+
+    async function loadResultPreview(url) {
+      const img = document.getElementById('out');
+      const err = document.getElementById('err');
+      const previewUrl = resolveAssetUrl(url);
+      err.hidden = true;
+      resultEmpty.querySelector('p').textContent = 'Loading preview… (download is ready)';
+      resultEmpty.hidden = false;
+      img.hidden = true;
+      img.removeAttribute('src');
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+      const loaded = await new Promise((resolve) => {
+        let settled = false;
+        const finish = (ok) => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timer);
+          resolve(ok);
+        };
+        img.onload = () => finish(true);
+        img.onerror = () => finish(false);
+        const timer = setTimeout(() => finish(false), 12000);
+        img.src = previewUrl;
+      });
+      if (loaded) {
+        img.hidden = false;
+        resultEmpty.hidden = true;
+      } else {
+        resultEmpty.querySelector('p').textContent = 'Preview slow or blocked. Use Download PNG.';
+        err.textContent = 'Preview did not load in time. Download still works.';
+        err.hidden = false;
+      }
+    }
+
     document.getElementById('reset').addEventListener('click', () => {
       clearFile();
       const img = document.getElementById('out');
       img.hidden = true;
       img.removeAttribute('src');
+      resultDownloadUrl = '';
+      resultEmpty.querySelector('p').textContent = 'The transparent cutout will appear here.';
       resultEmpty.hidden = false;
       downloadBtn.disabled = true;
       document.getElementById('err').hidden = true;
@@ -999,12 +1175,12 @@ export function renderIndexPage(env: Env): string {
     });
 
     downloadBtn.addEventListener('click', () => {
-      const img = document.getElementById('out');
-      if (!img.src) return;
-      const link = document.createElement('a');
-      link.href = img.src;
-      link.download = 'background-removed.' + (formatInput.value || 'png');
-      link.click();
+      if (!resultDownloadUrl) return;
+      void downloadAsset(resultDownloadUrl, resultDownloadName, downloadBtn).catch((error) => {
+        const err = document.getElementById('err');
+        err.textContent = error instanceof Error ? error.message : 'Download failed';
+        err.hidden = false;
+      });
     });
 
     const batchFile = document.getElementById('batch-file');
@@ -1040,9 +1216,21 @@ export function renderIndexPage(env: Env): string {
       return value.replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
     }
 
+    function revokeBatchPreview(item) {
+      if (item && item.preview && item.preview.startsWith('blob:')) {
+        URL.revokeObjectURL(item.preview);
+      }
+    }
+
     function addBatchFiles(fileList) {
       batchLimit.hidden = true;
-      const incoming = Array.from(fileList || []);
+      const incoming = Array.from(fileList || []).filter(isImageFile);
+      if (incoming.length === 0) {
+        const errBox = document.getElementById('err');
+        errBox.textContent = 'Drop PNG, JPG, or WEBP images only.';
+        errBox.hidden = false;
+        return;
+      }
       if (batchItems.length + incoming.length > maxBulk) {
         batchLimit.hidden = false;
         return;
@@ -1063,6 +1251,25 @@ export function renderIndexPage(env: Env): string {
       renderBatch();
     }
 
+    window.addEventListener(
+      'drop',
+      (event) => {
+        event.preventDefault();
+        const files = event.dataTransfer && event.dataTransfer.files;
+        if (!files || !files.length) return;
+        if (event.target && event.target.closest && event.target.closest('#drop, #batch-drop')) {
+          return;
+        }
+        if (view === 'batch') {
+          addBatchFiles(files);
+          return;
+        }
+        const file = pickImageFromList(files);
+        if (file) showFile(file);
+      },
+      false,
+    );
+
     batchFile.addEventListener('change', () => {
       addBatchFiles(batchFile.files);
       batchFile.value = '';
@@ -1070,16 +1277,19 @@ export function renderIndexPage(env: Env): string {
     ;['dragenter', 'dragover'].forEach((type) => {
       batchDrop.addEventListener(type, (event) => {
         event.preventDefault();
+        event.stopPropagation();
         batchDrop.classList.add('drag');
       });
     });
-    ;['dragleave', 'drop'].forEach((type) => {
-      batchDrop.addEventListener(type, (event) => {
-        event.preventDefault();
-        batchDrop.classList.remove('drag');
-      });
+    batchDrop.addEventListener('dragleave', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      batchDrop.classList.remove('drag');
     });
     batchDrop.addEventListener('drop', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      batchDrop.classList.remove('drag');
       addBatchFiles(event.dataTransfer && event.dataTransfer.files);
     });
     batchGrid.addEventListener('click', (event) => {
@@ -1089,33 +1299,38 @@ export function renderIndexPage(env: Env): string {
       const item = batchItems[index];
       if (!item) return;
       if (button.getAttribute('data-act') === 'rm') {
+        revokeBatchPreview(item);
         batchItems.splice(index, 1);
         zipUrl = '';
         renderBatch();
       }
       if (button.getAttribute('data-act') === 'dl' && item.url) {
-        const link = document.createElement('a');
-        link.href = item.url;
-        link.download = 'background-removed-' + item.file.name.replace(/\\.[^.]+$/, '') + '.' + (formatInput.value || 'png');
-        link.click();
+        const name =
+          'background-removed-' + item.file.name.replace(/\\.[^.]+$/, '') + '.' + (formatInput.value || 'png');
+        void downloadAsset(item.url, name, button).catch((error) => {
+          const errBox = document.getElementById('err');
+          errBox.textContent = error instanceof Error ? error.message : 'Download failed';
+          errBox.hidden = false;
+        });
       }
       if (button.getAttribute('data-act') === 'retry') {
         retryOne(item);
       }
     });
     batchClear.addEventListener('click', () => {
+      batchItems.forEach(revokeBatchPreview);
       batchItems.length = 0;
       zipUrl = '';
       batchLimit.hidden = true;
       renderBatch();
     });
     batchDownloadAll.addEventListener('click', () => {
-      if (zipUrl) {
-        const link = document.createElement('a');
-        link.href = zipUrl;
-        link.download = 'background-removed-images.zip';
-        link.click();
-      }
+      if (!zipUrl) return;
+      void downloadAsset(zipUrl, 'background-removed-images.zip', batchDownloadAll).catch((error) => {
+        const errBox = document.getElementById('err');
+        errBox.textContent = error instanceof Error ? error.message : 'Download failed';
+        errBox.hidden = false;
+      });
     });
 
     function sharedFields(body) {
@@ -1179,7 +1394,7 @@ export function renderIndexPage(env: Env): string {
       if (view === 'batch') {
         if (batchItems.length === 0) { err.textContent = 'Choose 1 to ' + maxBulk + ' images.'; err.hidden = false; return; }
         const body = new FormData();
-        for (const item of batchItems) body.append('images', item.file);
+        for (const item of batchItems) body.append('images', item.file, item.file.name);
         sharedFields(body);
         batchItems.forEach((item) => { item.status = 'processing'; item.message = 'Processing'; });
         zipUrl = '';
@@ -1227,30 +1442,38 @@ export function renderIndexPage(env: Env): string {
         return;
       }
 
-      const file = fileInput.files[0];
-      if (!file) { err.textContent = 'Choose an image.'; err.hidden = false; return; }
+      const file = selectedSingleFile || fileInput.files[0];
+      if (!file) { err.textContent = 'Choose or drop an image.'; err.hidden = false; return; }
       const body = new FormData();
-      body.set('image', file);
+      body.set('image', file, file.name);
       sharedFields(body);
-      body.set('responseMode', 'binary');
+      body.set('responseMode', 'json');
       btn.disabled = true;
+      downloadBtn.disabled = true;
+      resultDownloadUrl = '';
       resultEmpty.querySelector('p').textContent = 'Processing image…';
       resultEmpty.hidden = false;
       img.hidden = true;
-      const started = Date.now();
+      img.removeAttribute('src');
+      let previewUrl = '';
       try {
         const response = await fetch(removeUrl, { method: 'POST', headers: { 'x-api-key': key }, body });
+        const payload = await response.json().catch(() => null);
         if (!response.ok) {
-          const payload = await response.json().catch(() => null);
           throw new Error(payload?.error?.message || ('Request failed (' + response.status + ')'));
         }
-        const blob = await response.blob();
-        img.src = URL.createObjectURL(blob);
-        img.hidden = false;
-        resultEmpty.hidden = true;
-        downloadBtn.disabled = false;
-        meta.textContent = ((Date.now() - started) / 1000).toFixed(1) + 's · ' + (response.headers.get('x-image-id') || 'done');
+        previewUrl = payload?.data?.result?.url || '';
+        if (!previewUrl) {
+          throw new Error('Missing result URL in response.');
+        }
+        const durationMs = payload?.data?.processing?.durationMs;
+        const seconds =
+          typeof durationMs === 'number' ? (durationMs / 1000).toFixed(1) : null;
+        meta.textContent =
+          (seconds ? seconds + 's · ' : '') + 'Ready · use Download PNG';
         meta.hidden = false;
+        armResultDownload(previewUrl);
+        resultEmpty.querySelector('p').textContent = 'Processing complete. Loading preview…';
       } catch (error) {
         resultEmpty.querySelector('p').textContent = 'The transparent cutout will appear here.';
         resultEmpty.hidden = false;
@@ -1258,6 +1481,11 @@ export function renderIndexPage(env: Env): string {
         err.hidden = false;
       } finally {
         btn.disabled = false;
+      }
+      if (previewUrl) {
+        void loadResultPreview(previewUrl).catch(() => {
+          resultEmpty.querySelector('p').textContent = 'Preview failed. Use Download PNG.';
+        });
       }
     });
   </script>

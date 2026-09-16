@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   fuseForegroundMasks,
+  resolvePhotographicOverlayMerge,
   shouldRouteToGraphicModel,
   shouldUseGraphicPath,
 } from '../../infrastructure/cv/mask-fusion.js';
@@ -37,6 +38,33 @@ function overlays(length: number, fill = 0): OverlayMasks {
 }
 
 describe('mask fusion', () => {
+  it('merges logos without text when only preserveLogos is enabled', () => {
+    const width = 16;
+    const height = 16;
+    const subject = new Uint8Array(width * height);
+    fillRect(subject, width, 4, 7, 11, 15, 255);
+    fillRect(subject, width, 3, 6, 5, 8, 255);
+    const overlay = overlays(width * height);
+    fillRect(overlay.logoAndOverlayMask, width, 2, 2, 5, 5, 255);
+    overlay.analysis.overlayCoverage = 0.03;
+
+    const fused = fuseForegroundMasks({
+      subjectMask: subject,
+      overlays: overlay,
+      width,
+      height,
+      mode: 'person',
+      preservation: {
+        preserveText: false,
+        preserveLogos: true,
+        preserveTextContainers: false,
+      },
+    });
+
+    expect(fused.alpha[3 * width + 3]).toBeGreaterThan(180);
+    expect(fused.textPreserved).toBe(true);
+  });
+
   it('keeps the brighter of subject and text masks', () => {
     const subject = Uint8Array.from([0, 200, 0, 0]);
     const overlay = overlays(4);
@@ -52,6 +80,84 @@ describe('mask fusion', () => {
     expect(fused.alpha[0]).toBeGreaterThan(200);
     expect(fused.alpha[1]).toBeGreaterThan(180);
     expect(fused.textPreserved).toBe(true);
+  });
+
+  it('skips false-positive text containers when the subject mask is already strong', () => {
+    const merge = resolvePhotographicOverlayMerge({
+      useGraphicPath: false,
+      subjectCoverage: 0.35,
+      analysis: {
+        background: { r: 0, g: 0, b: 0 },
+        backgroundVariance: 70,
+        graphicScore: 0.45,
+        textCoverage: 0.02,
+        containerCoverage: 0.18,
+        overlayCoverage: 0.24,
+        nonBackgroundCoverage: 0.4,
+        isTextHeavy: true,
+      },
+      textMaskCoverage: 0.019,
+      containerMaskCoverage: 0.18,
+      logoMaskCoverage: 0.14,
+      preserveText: true,
+      preserveTextContainers: true,
+      preserveLogos: true,
+    });
+    expect(merge.text).toBe(true);
+    expect(merge.containers).toBe(false);
+    expect(merge.logos).toBe(false);
+  });
+
+  it('merges a localized logo mask without OCR text when logos are enabled', () => {
+    const merge = resolvePhotographicOverlayMerge({
+      useGraphicPath: false,
+      subjectCoverage: 0.32,
+      analysis: {
+        background: { r: 0, g: 0, b: 0 },
+        backgroundVariance: 40,
+        graphicScore: 0.3,
+        textCoverage: 0.005,
+        containerCoverage: 0.01,
+        overlayCoverage: 0.04,
+        nonBackgroundCoverage: 0.35,
+        isTextHeavy: false,
+      },
+      textMaskCoverage: 0.004,
+      containerMaskCoverage: 0.008,
+      logoMaskCoverage: 0.028,
+      preserveText: false,
+      preserveTextContainers: true,
+      preserveLogos: true,
+    });
+    expect(merge.text).toBe(false);
+    expect(merge.containers).toBe(false);
+    expect(merge.logos).toBe(true);
+  });
+
+  it('merges text containers when text is present and the container mask is localized', () => {
+    const merge = resolvePhotographicOverlayMerge({
+      useGraphicPath: false,
+      subjectCoverage: 0.3,
+      analysis: {
+        background: { r: 0, g: 0, b: 0 },
+        backgroundVariance: 30,
+        graphicScore: 0.35,
+        textCoverage: 0.025,
+        containerCoverage: 0.04,
+        overlayCoverage: 0.08,
+        nonBackgroundCoverage: 0.38,
+        isTextHeavy: false,
+      },
+      textMaskCoverage: 0.022,
+      containerMaskCoverage: 0.045,
+      logoMaskCoverage: 0.01,
+      preserveText: true,
+      preserveTextContainers: true,
+      preserveLogos: true,
+    });
+    expect(merge.text).toBe(true);
+    expect(merge.containers).toBe(true);
+    expect(merge.logos).toBe(false);
   });
 
   it('throws when a person cutout would be empty', () => {

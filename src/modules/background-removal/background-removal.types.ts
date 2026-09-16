@@ -53,10 +53,27 @@ export interface ProcessedImageAsset extends ImageAsset {
 
 export type ProcessingStatus = 'completed' | 'needs_review' | 'failed';
 
+export interface ProcessingStageTiming {
+  queueWaitMs: number;
+  orientDecodeMs: number;
+  originalPersistMs: number;
+  processWallMs: number;
+  parallelWallMs: number;
+  workerRoundTripMs?: number;
+  workerDecodeMs?: number;
+  workerInferMs?: number;
+  workerPngMs?: number;
+  nodePostMs?: number;
+  resultPersistMs: number;
+  totalMs: number;
+}
+
 export interface ProcessingInfo {
   model: string;
   quality: QualityMode;
   durationMs: number;
+  inferenceMs?: number;
+  stageMs?: ProcessingStageTiming;
   mode: RemovalMode;
   appliedMode: RemovalMode;
   status: ProcessingStatus;

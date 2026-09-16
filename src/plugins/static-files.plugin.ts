@@ -5,6 +5,7 @@ import path from 'node:path';
 export async function registerStaticFiles(
   app: FastifyInstance,
   cwd: string = process.cwd(),
+  options: { allowDebugAssets?: boolean } = {},
 ): Promise<void> {
   await app.register(fastifyStatic, {
     root: path.resolve(cwd, 'public'),
@@ -17,7 +18,16 @@ export async function registerStaticFiles(
       if (normalized.includes('..')) {
         return false;
       }
-      return normalized.startsWith('/uploads/') || normalized.startsWith('uploads/');
+      if (normalized.startsWith('/uploads/') || normalized.startsWith('uploads/')) {
+        return true;
+      }
+      if (
+        options.allowDebugAssets &&
+        (normalized.startsWith('/debug/') || normalized.startsWith('debug/'))
+      ) {
+        return true;
+      }
+      return false;
     },
   });
 }

@@ -3,6 +3,7 @@ import Fastify, { type FastifyInstance } from 'fastify';
 import { bodyLimitBytes, requestTimeoutMs, SENSITIVE_HEADER_NAMES } from './config/constants.js';
 import { loadEnv, type Env } from './config/env.js';
 import { BiRefNetProvider } from './infrastructure/ai/birefnet.provider.js';
+import { InspyrenetWorkerClient } from './infrastructure/ai/inspyrenet-worker.client.js';
 import { MatteRefiner } from './infrastructure/ai/matte-refiner.js';
 import { InferenceWorker } from './infrastructure/ai/inference-worker.js';
 import { getSharedModelManager, ModelManager } from './infrastructure/ai/model-manager.js';
@@ -37,6 +38,7 @@ export interface AppDependencies {
   inferenceWorker: InferenceWorker;
   backgroundRemovalProcessor: BackgroundRemovalProcessor;
   backgroundRemovalService: BackgroundRemovalService;
+  inspyrenetClient: InspyrenetWorkerClient | null;
 }
 
 export interface BuildAppOptions {
@@ -68,9 +70,20 @@ async function mergeDependencies(
       concurrency: env.BG_REMOVAL_CONCURRENCY,
       maxQueueSize: env.BG_REMOVAL_QUEUE_LIMIT,
     });
+  const inspyrenetClient =
+    overrides.inspyrenetClient ??
+    (env.REMOVAL_PHOTO_ENGINE === 'inspyrenet' ? new InspyrenetWorkerClient(env) : null);
   const backgroundRemovalProcessor =
     overrides.backgroundRemovalProcessor ??
-    new BackgroundRemovalProcessor(modelManager, inferenceWorker, imageProcessor, undefined, matteRefiner);
+    new BackgroundRemovalProcessor(
+      modelManager,
+      inferenceWorker,
+      imageProcessor,
+      env.REMOVAL_PHOTO_ENGINE,
+      inspyrenetClient,
+      undefined,
+      matteRefiner,
+    );
   const backgroundRemovalService =
     overrides.backgroundRemovalService ??
     new BackgroundRemovalService(
@@ -92,6 +105,7 @@ async function mergeDependencies(
     inferenceWorker,
     backgroundRemovalProcessor,
     backgroundRemovalService,
+    inspyrenetClient,
   };
 }
 
@@ -113,6 +127,8 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
   app.decorate('env', deps.env);
   app.decorate('modelManager', deps.modelManager);
   app.decorate('processingQueue', deps.queue);
+  app.decorate('inspyrenetClient', deps.inspyrenetClient);
+  app.decorate('photoEngine', deps.env.REMOVAL_PHOTO_ENGINE);
 
   app.setValidatorCompiler(() => {
     return (data: unknown) => ({ value: data });
@@ -127,7 +143,9 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
   await registerCors(app);
   await registerRateLimit(app);
   await registerMultipart(app, env);
-  await registerStaticFiles(app);
+  await registerStaticFiles(app, process.cwd(), {
+    allowDebugAssets: env.NODE_ENV === 'development',
+  });
   registerApiKeyAuth(app, env);
   registerIndexRoutes(app, env);
   if (env.NODE_ENV !== 'test') {
@@ -140,6 +158,8 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
         modelManager: deps.modelManager,
         queue: deps.queue,
         storage: deps.storage,
+        photoEngine: deps.env.REMOVAL_PHOTO_ENGINE,
+        inspyrenetClient: deps.inspyrenetClient,
       });
       registerBackgroundRemovalRoutes(scoped, {
         env,

@@ -9,6 +9,10 @@
   },
   "scripts": {
     "dev": "tsx watch src/server.ts",
+    "worker:inspyrenet": "eval/inspyrenet/.venv/Scripts/python.exe eval/inspyrenet/worker.py",
+    "bench:inspyrenet:stage1": "node --import tsx/esm eval/inspyrenet/stage1-api-benchmark.mjs",
+    "worker:inspyrenet:resolve": "node eval/inspyrenet/scripts/resolve-worker.mjs",
+    "worker:inspyrenet:unix": "eval/inspyrenet/.venv/bin/python eval/inspyrenet/worker.py",
     "build": "tsc -p tsconfig.json",
     "start": "node dist/server.js",
     "type-check": "tsc --noEmit",
@@ -23,6 +27,8 @@
     "test:images": "tsx scripts/run-test-images.mjs",
     "test:images:generate": "tsx scripts/generate-test-images.mjs",
     "test:images:full": "npm run test:images:generate && npm run test:images",
+    "test:real-model": "node --import tsx/esm scripts/real-model-regression.mjs",
+    "validate:e2e-paths": "node --import tsx/esm tmp-verify/e2e-path-compare.mjs",
     "train:bootstrap": "node training/bootstrap-teacher.mjs",
     "train:matte": "node training/train_matte_refiner.mjs"
   },

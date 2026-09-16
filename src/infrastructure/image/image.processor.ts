@@ -66,8 +66,10 @@ export class ImageProcessor {
     modelHeight: number,
     mode: RemovalMode = 'auto',
   ): Promise<{ pixels: Uint8Array; width: number; height: number; layout: ModelInputLayout }> {
-    const kernel = quality === 'hd' ? 'lanczos3' : 'cubic';
-    const useCover = isSubjectCutoutMode(mode) || mode === 'auto';
+    /** Output encoding quality; must not change model tensor geometry (see ViT resample=2 / bilinear). */
+    const graphicResizeKernel = quality === 'hd' ? 'lanczos3' : 'cubic';
+    const modelStretchKernel = 'linear';
+    const useOfficialStretch = isSubjectCutoutMode(mode) || mode === 'auto';
     let sourceWidth: number;
     let sourceHeight: number;
     let pipeline: ReturnType<typeof sharp>;
@@ -85,9 +87,21 @@ export class ImageProcessor {
       pipeline = sharp(orientedImage).rotate().toColourspace('srgb').removeAlpha();
     }
 
+    if (useOfficialStretch) {
+      const { data, info } = await pipeline
+        .resize(modelWidth, modelHeight, { fit: 'fill', kernel: modelStretchKernel })
+        .raw()
+        .toBuffer({ resolveWithObject: true });
+      return {
+        pixels: packRgbChannels(data, info.width, info.height, info.channels),
+        width: info.width,
+        height: info.height,
+        layout: { mode: 'stretch' },
+      };
+    }
+
     const tallPortrait = sourceHeight / Math.max(1, sourceWidth) >= 1.2;
-    // Cover crop zooms the subject but drops strips of the frame; tall portraits need the full canvas in the model.
-    if (useCover && !isGraphicCutoutMode(mode) && !tallPortrait) {
+    if (!isGraphicCutoutMode(mode) && !tallPortrait) {
       const cover = computeCoverCrop(
         sourceWidth,
         sourceHeight,
@@ -100,7 +114,7 @@ export class ImageProcessor {
       const left = Math.max(0, Math.min(scaledWidth - modelWidth, Math.round(cover.cropLeft)));
       const top = Math.max(0, Math.min(scaledHeight - modelHeight, Math.round(cover.cropTop)));
       const { data, info } = await pipeline
-        .resize(scaledWidth, scaledHeight, { fit: 'fill', kernel })
+        .resize(scaledWidth, scaledHeight, { fit: 'fill', kernel: graphicResizeKernel })
         .extract({ left, top, width: modelWidth, height: modelHeight })
         .raw()
         .toBuffer({ resolveWithObject: true });
@@ -120,7 +134,7 @@ export class ImageProcessor {
     const padRight = modelWidth - letterbox.contentWidth - letterbox.offsetX;
     const padBottom = modelHeight - letterbox.contentHeight - letterbox.offsetY;
     const { data, info } = await pipeline
-      .resize(letterbox.contentWidth, letterbox.contentHeight, { fit: 'fill', kernel })
+      .resize(letterbox.contentWidth, letterbox.contentHeight, { fit: 'fill', kernel: graphicResizeKernel })
       .extend({
         top: letterbox.offsetY,
         bottom: padBottom,
@@ -190,7 +204,7 @@ export class ImageProcessor {
       const rgbBytes = rgb.data instanceof Uint8Array ? rgb.data : new Uint8Array(rgb.data);
       let refinedMask: Buffer;
       if (subjectCutout) {
-        let mask = refineAlphaMatte(copyUint8(resizedMask));
+        let mask = copyUint8(resizedMask);
         const { color: background, variance } = estimateBackgroundColor(rgbBytes, width, height);
         if (variance < 22) {
           mask = Buffer.from(defringeAlpha(rgbBytes, mask, width, height, background, 26));

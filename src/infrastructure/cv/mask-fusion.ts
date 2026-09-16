@@ -10,15 +10,69 @@ import {
 import { refineGraphicCutout } from './graphic-matte.js';
 import { normalizeRemovalMode } from './mode-utils.js';
 import { refinePersonMatte } from './person-matte.js';
+import { isOutdoorLikeScene, resolveBackgroundVariance } from './scene-analysis.js';
 import type { PreservationOptions } from './preservation-options.js';
 import { isGraphicCutoutMode, isSubjectCutoutMode } from './preservation-options.js';
 import { buildTextBackgroundMatte } from './text-background-matte.js';
 import { coverage, dilate, erode, fillSmallHoles, maxMasks, removeSmallComponents } from './morphology.js';
 import type { FusedForeground, OverlayMasks } from './types.js';
 
+const SUBJECT_LOCK_COVERAGE = 0.1;
+/** Bokeh false positives on outdoor portraits often exceed this; real badges/captions stay smaller. */
+const OVERLAY_FALSE_POSITIVE_COVERAGE = 0.1;
+const OVERLAY_MIN_SIGNAL = 0.012;
+
+/**
+ * Per-layer overlay merge on photographic (BiRefNet) paths.
+ * Caller passes preservation flags; this function applies detection gating only.
+ * Logo/container coverage bands (0.012–0.10) are heuristics — not size guarantees.
+ */
+export function resolvePhotographicOverlayMerge(input: {
+  useGraphicPath: boolean;
+  subjectCoverage: number;
+  analysis: OverlayMasks['analysis'];
+  textMaskCoverage: number;
+  containerMaskCoverage: number;
+  logoMaskCoverage: number;
+  preserveText: boolean;
+  preserveTextContainers: boolean;
+  preserveLogos: boolean;
+}): { text: boolean; containers: boolean; logos: boolean } {
+  if (input.useGraphicPath) {
+    return {
+      text: input.preserveText,
+      containers: input.preserveTextContainers,
+      logos: input.preserveLogos,
+    };
+  }
+  if (input.subjectCoverage < SUBJECT_LOCK_COVERAGE) {
+    return {
+      text: input.preserveText,
+      containers: input.preserveTextContainers,
+      logos: input.preserveLogos,
+    };
+  }
+  const { textCoverage, isTextHeavy } = input.analysis;
+  const posterLike = isTextHeavy && textCoverage >= 0.06;
+  const strongText = textCoverage >= 0.04;
+  const weakText = textCoverage >= 0.012 || input.textMaskCoverage >= 0.012;
+  const localizedContainer =
+    input.containerMaskCoverage >= OVERLAY_MIN_SIGNAL &&
+    input.containerMaskCoverage <= OVERLAY_FALSE_POSITIVE_COVERAGE;
+  const localizedLogo =
+    input.logoMaskCoverage >= OVERLAY_MIN_SIGNAL &&
+    input.logoMaskCoverage <= OVERLAY_FALSE_POSITIVE_COVERAGE;
+  return {
+    text: input.preserveText && (weakText || posterLike),
+    containers:
+      input.preserveTextContainers &&
+      (strongText || posterLike || (weakText && localizedContainer)),
+    logos: input.preserveLogos && (strongText || posterLike || localizedLogo),
+  };
+}
+
 const EMPTY_COVERAGE = 0.035;
 const DESTRUCTIVE_KEEP_RATIO = 0.28;
-const SUBJECT_LOCK_COVERAGE = 0.1;
 
 export function fuseForegroundMasks(input: {
   subjectMask: Uint8Array;
@@ -28,6 +82,11 @@ export function fuseForegroundMasks(input: {
   height: number;
   mode: RemovalMode;
   preservation: PreservationOptions;
+  /**
+   * Validation only: when true, run legacy fillSmallHoles on the person path (removed from production).
+   * @deprecated Used by tmp-verify/hole-fill-ab.mjs for A/B only.
+   */
+  legacyFillSmallHoles?: boolean;
 }): FusedForeground {
   const mode = normalizeRemovalMode(input.mode);
   const subjectCoverage = coverage(input.subjectMask);
@@ -66,6 +125,9 @@ export function fuseForegroundMasks(input: {
   }
 
   let fused: Uint8Array;
+  let mergedTextLayer = false;
+  let mergedContainerLayer = false;
+  let mergedLogoLayer = false;
   const pixelCount = input.width * input.height;
   if (textBackgroundMode && input.rgb) {
     fused = buildTextBackgroundMatte(
@@ -80,15 +142,35 @@ export function fuseForegroundMasks(input: {
     if (!useGraphicPath) {
       layers.push(subjectMask);
     }
-    if (input.preservation.preserveText) {
-      layers.push(input.overlays.textMask);
-      if (input.preservation.preserveTextContainers) {
+    const wantsOverlayMerge =
+      input.preservation.preserveText ||
+      input.preservation.preserveLogos ||
+      input.preservation.preserveTextContainers;
+    if (wantsOverlayMerge) {
+      const overlayMerge = resolvePhotographicOverlayMerge({
+        useGraphicPath,
+        subjectCoverage,
+        analysis: input.overlays.analysis,
+        textMaskCoverage: coverage(input.overlays.textMask, 128),
+        containerMaskCoverage: coverage(input.overlays.textContainerMask, 128),
+        logoMaskCoverage: coverage(input.overlays.logoAndOverlayMask, 128),
+        preserveText: input.preservation.preserveText,
+        preserveTextContainers: input.preservation.preserveTextContainers,
+        preserveLogos: input.preservation.preserveLogos,
+      });
+      if (overlayMerge.text) {
+        layers.push(input.overlays.textMask);
+        mergedTextLayer = true;
+      }
+      if (overlayMerge.containers) {
         layers.push(input.overlays.textContainerMask);
+        mergedContainerLayer = true;
       }
-      if (input.preservation.preserveLogos) {
+      if (overlayMerge.logos) {
         layers.push(input.overlays.logoAndOverlayMask);
+        mergedLogoLayer = true;
       }
-      if (composite && input.rgb) {
+      if (composite && input.rgb && mergedTextLayer) {
         layers.push(designPanelMask(input.rgb, input.overlays.textMask, input.width, input.height));
       }
     }
@@ -106,15 +188,26 @@ export function fuseForegroundMasks(input: {
       const minArea = Math.max(8, Math.round(pixelCount * 0.00008));
       fused = removeSmallComponents(fused, input.width, input.height, minArea);
     }
-    fused = fillSmallHoles(
-      fused,
-      input.width,
-      input.height,
-      Math.round(input.width * input.height * 0.011),
+    const outdoorLike = isOutdoorLikeScene(
+      resolveBackgroundVariance(
+        input.overlays.analysis.backgroundVariance,
+        input.rgb,
+        input.width,
+        input.height,
+      ),
     );
+    if (input.legacyFillSmallHoles) {
+      fused = fillSmallHoles(
+        fused,
+        input.width,
+        input.height,
+        Math.round(input.width * input.height * 0.011),
+      );
+    }
     fused = pruneDetachedBackground(fused, {
       ...input,
       subjectMask,
+      outdoorLike,
     });
     fused = maybeStripOverheadFixtures(fused, input.width, input.height, input.mode);
     if (!useGraphicPath && input.rgb) {
@@ -157,12 +250,11 @@ export function fuseForegroundMasks(input: {
     alpha: fused,
     needsReview,
     textPreserved:
-      input.preservation.preserveText &&
-      (coverage(input.overlays.textMask) > 0.002 ||
-        coverage(input.overlays.textContainerMask) > 0.002 ||
-        coverage(input.overlays.logoAndOverlayMask) > 0.002 ||
-        textBackgroundMode ||
-        useGraphicPath),
+      mergedTextLayer ||
+      mergedContainerLayer ||
+      mergedLogoLayer ||
+      textBackgroundMode ||
+      useGraphicPath,
     subjectCoverage,
     overlayCoverage,
     fusedCoverage: recoveredCoverage,
@@ -233,6 +325,7 @@ export function pruneDetachedBackground(
     overlays: OverlayMasks;
     width: number;
     height: number;
+    outdoorLike?: boolean;
   },
 ): Uint8Array {
   const components = connectedComponents(fused, input.width, input.height, 48);
@@ -251,16 +344,27 @@ export function pruneDetachedBackground(
     input.overlays.textMask,
     input.overlays.textContainerMask,
   ]);
+  const subjectCore = input.outdoorLike
+    ? erode(
+        input.subjectMask,
+        input.width,
+        input.height,
+        Math.max(1, Math.round(Math.min(input.width, input.height) * 0.006)),
+      )
+    : input.subjectMask;
 
   for (const component of components) {
     if (isOverheadDebris(component, primary) && !overlapsMask(component, textProtect)) {
       continue;
     }
-    const keepComponent =
-      component === primary ||
-      overlapsMask(component, input.subjectMask) ||
-      nearPrimary(component, primary, grow) ||
-      overlapsMask(component, textProtect);
+    const keepComponent = input.outdoorLike
+      ? component === primary ||
+        overlapsMask(component, subjectCore) ||
+        overlapsMask(component, textProtect)
+      : component === primary ||
+        overlapsMask(component, input.subjectMask) ||
+        nearPrimary(component, primary, grow) ||
+        overlapsMask(component, textProtect);
     if (!keepComponent) {
       continue;
     }

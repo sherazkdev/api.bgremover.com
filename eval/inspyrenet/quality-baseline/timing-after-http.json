@@ -1,0 +1,18 @@
+{
+  "note": "Post-optimization warm (worker torch_threads=8, person early-path, PNG compress_level=1)",
+  "worker8766StagesMs": {
+    "sunglasses": { "infer": 33973.5, "decode": 16.3, "png": 79.6, "wall": 34187 },
+    "beard-white-shirt": { "infer": 27511.6, "decode": 21.6, "png": 98.0, "wall": 27674 },
+    "OIP": { "infer": 51318.2, "decode": 38.7, "png": 60.5, "wall": 51594 }
+  },
+  "apiSpawnedWallMs": {
+    "sunglasses-person-hd": 27990,
+    "processingDurationMs": 27933
+  },
+  "processMemoryWorkingSetMb": {
+    "python": 1199.4,
+    "node": 477.9,
+    "source": "tmp-verify/inspyrenet-perf-profile.mjs (sum of all python/node processes on host)"
+  },
+  "gpu": "cuda unavailable (torch.cuda.is_available() false)"
+}

@@ -20,7 +20,8 @@ export interface CoverCropLayout {
 
 export type ModelInputLayout =
   | { mode: 'contain'; letterbox: LetterboxLayout }
-  | { mode: 'cover'; cover: CoverCropLayout };
+  | { mode: 'cover'; cover: CoverCropLayout }
+  | { mode: 'stretch' };
 
 /** ImageNet mean as 8-bit RGB so padded pixels normalize near zero. */
 export const IMAGENET_PAD_RGB = { r: 124, g: 116, b: 104 } as const;
@@ -61,6 +62,41 @@ export function mapCoverMaskToSource(
     for (let sx = 0; sx < sourceWidth; sx += 1) {
       const mx = sx * scale - cropLeft;
       const my = sy * scale - cropTop;
+      if (mx < 0 || my < 0 || mx >= maskWidth || my >= maskHeight) {
+        output[sy * sourceWidth + sx] = 0;
+        continue;
+      }
+      const x0 = Math.floor(mx);
+      const y0 = Math.floor(my);
+      const x1 = Math.min(maskWidth - 1, x0 + 1);
+      const y1 = Math.min(maskHeight - 1, y0 + 1);
+      const tx = mx - x0;
+      const ty = my - y0;
+      const v00 = mask[y0 * maskWidth + x0] ?? 0;
+      const v10 = mask[y0 * maskWidth + x1] ?? 0;
+      const v01 = mask[y1 * maskWidth + x0] ?? 0;
+      const v11 = mask[y1 * maskWidth + x1] ?? 0;
+      const top = v00 * (1 - tx) + v10 * tx;
+      const bottom = v01 * (1 - tx) + v11 * tx;
+      output[sy * sourceWidth + sx] = Math.round(top * (1 - ty) + bottom * ty);
+    }
+  }
+  return { data: output, width: sourceWidth, height: sourceHeight };
+}
+
+/** Map a model canvas mask back to source dimensions after stretch resize (matches ViT 512×512 resize). */
+export function mapStretchMaskToSource(
+  mask: Uint8Array,
+  maskWidth: number,
+  maskHeight: number,
+  sourceWidth: number,
+  sourceHeight: number,
+): { data: Uint8Array; width: number; height: number } {
+  const output = new Uint8Array(sourceWidth * sourceHeight);
+  for (let sy = 0; sy < sourceHeight; sy += 1) {
+    for (let sx = 0; sx < sourceWidth; sx += 1) {
+      const mx = (sx + 0.5) * (maskWidth / sourceWidth) - 0.5;
+      const my = (sy + 0.5) * (maskHeight / sourceHeight) - 0.5;
       if (mx < 0 || my < 0 || mx >= maskWidth || my >= maskHeight) {
         output[sy * sourceWidth + sx] = 0;
         continue;
