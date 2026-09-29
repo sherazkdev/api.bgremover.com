@@ -34,7 +34,7 @@ export async function prepareInspyrenetWorkerImage(
   const buffer = await sharp(orientedBuffer)
     .rotate()
     .resize(size.width, size.height, { fit: 'fill', kernel: 'lanczos3' })
-    .jpeg({ quality: 95, mozjpeg: true })
+    .jpeg({ quality: 95 })
     .toBuffer();
   const meta = await sharp(buffer).metadata();
   return {

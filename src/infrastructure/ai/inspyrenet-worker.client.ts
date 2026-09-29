@@ -1,4 +1,4 @@
-import { processingFailedError } from '../../shared/errors/app-error.js';
+import { AppError, processingFailedError } from '../../shared/errors/app-error.js';
 import type { Env } from '../../config/env.js';
 
 export class InspyrenetWorkerClient {
@@ -118,6 +118,17 @@ export class InspyrenetWorkerClient {
         workerInferMs: Number.isFinite(workerInferMs) ? workerInferMs : 0,
         workerPngMs: Number.isFinite(workerPngMs) ? workerPngMs : 0,
       };
+    } catch (error) {
+      if (error instanceof AppError) {
+        throw error;
+      }
+      if (isAbortError(error)) {
+        throw processingFailedError(
+          `Background removal timed out after ${this.env.INSPIRENET_WORKER_TIMEOUT_MS}ms`,
+        );
+      }
+      const message = error instanceof Error ? error.message : 'Worker request failed';
+      throw processingFailedError(`InSPyReNet worker failed: ${message}`);
     } finally {
       clearTimeout(timer);
     }
@@ -134,4 +145,12 @@ export class InspyrenetWorkerClient {
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isAbortError(error: unknown): boolean {
+  if (!error || typeof error !== 'object') {
+    return false;
+  }
+  const name = (error as { name?: string }).name;
+  return name === 'AbortError' || name === 'TimeoutError';
 }

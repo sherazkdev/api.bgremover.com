@@ -1,6 +1,11 @@
 import type { FastifyError, FastifyReply, FastifyRequest } from 'fastify';
 
-import { AppError, internalServerError, rateLimitExceededError } from './app-error.js';
+import {
+  AppError,
+  internalServerError,
+  processingFailedError,
+  rateLimitExceededError,
+} from './app-error.js';
 import { fileTooLargeError, tooManyImagesError, validationError } from './app-error.js';
 import type { Env } from '../../config/env.js';
 
@@ -55,6 +60,10 @@ export function mapUnknownError(error: unknown, env: Env): AppError {
   }
   if (mapped.validation) {
     return validationError('Request validation failed', mapped.validation);
+  }
+
+  if (error instanceof Error && (error.name === 'AbortError' || error.name === 'TimeoutError')) {
+    return processingFailedError('Request timed out');
   }
 
   return internalServerError();
