@@ -29,6 +29,8 @@ const envSchema = z.object({
   REMOVAL_PHOTO_ENGINE: z.enum(PHOTO_REMOVAL_ENGINES).default('birefnet'),
   INSPIRENET_WORKER_URL: z.string().url().default('http://127.0.0.1:8765'),
   INSPIRENET_WORKER_TIMEOUT_MS: z.coerce.number().int().min(5000).max(600_000).default(180_000),
+  /** Longest edge sent to InSPyReNet worker (upscale cutout to original after). 0 = full resolution. */
+  INSPIRENET_MAX_SOURCE_EDGE: z.coerce.number().int().min(0).max(8192).default(2048),
   /** Optional Bearer token for remote GPU trial workers only; unset on loopback CPU production. */
   INSPIRENET_WORKER_TOKEN: z.string().min(8).optional(),
 });

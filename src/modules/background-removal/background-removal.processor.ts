@@ -11,6 +11,10 @@ import {
 const INSPIRENET_PHOTO_MODES = new Set<RemovalMode>(['auto', 'person']);
 
 import type { InspyrenetWorkerClient } from '../../infrastructure/ai/inspyrenet-worker.client.js';
+import {
+  prepareInspyrenetWorkerImage,
+  upscaleInspyrenetWorkerPng,
+} from '../../infrastructure/ai/inspyrenet-photo-input.js';
 import { processingFailedError } from '../../shared/errors/app-error.js';
 import sharp from 'sharp';
 import type { InferenceWorker } from '../../infrastructure/ai/inference-worker.js';
@@ -75,6 +79,7 @@ export class BackgroundRemovalProcessor {
     private readonly inspyrenetClient: InspyrenetWorkerClient | null = null,
     private readonly foregroundPreserver: ForegroundPreserver = new ForegroundPreserver(),
     private readonly matteRefiner: MatteRefiner | null = null,
+    private readonly inspyrenetMaxSourceEdge = 2048,
   ) {}
 
   public async process(input: RemovalProcessInput): Promise<RemovalProcessOutput> {
@@ -218,17 +223,27 @@ export class BackgroundRemovalProcessor {
       throw processingFailedError('InSPyReNet worker is not configured');
     }
     const requestId = input.requestId ?? crypto.randomUUID();
-    const worker = await this.inspyrenetClient.removePhoto(input.orientedBuffer, requestId);
+    const prepared = await prepareInspyrenetWorkerImage(
+      input.orientedBuffer,
+      input.width,
+      input.height,
+      this.inspyrenetMaxSourceEdge,
+    );
+    const worker = await this.inspyrenetClient.removePhoto(prepared.buffer, requestId);
     const nodePostStarted = Date.now();
+    let workerPng = worker.buffer;
+    if (prepared.workerWidth !== input.width || prepared.workerHeight !== input.height) {
+      workerPng = await upscaleInspyrenetWorkerPng(worker.buffer, input.width, input.height);
+    }
     const { subjectCoverage, hasTransparency } = await inspectWorkerPng(
-      worker.buffer,
+      workerPng,
       input.width,
       input.height,
     );
-    let buffer: Buffer = worker.buffer;
+    let buffer: Buffer = workerPng;
     let mimeType: 'image/png' | 'image/webp' = 'image/png';
     if (input.format === 'webp') {
-      buffer = await sharp(worker.buffer)
+      buffer = await sharp(workerPng)
         .webp({ quality: input.quality === 'hd' ? 92 : 82, effort: 4 })
         .toBuffer();
       mimeType = 'image/webp';

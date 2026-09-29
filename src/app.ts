@@ -83,6 +83,7 @@ async function mergeDependencies(
       inspyrenetClient,
       undefined,
       matteRefiner,
+      env.INSPIRENET_MAX_SOURCE_EDGE,
     );
   const backgroundRemovalService =
     overrides.backgroundRemovalService ??

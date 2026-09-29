@@ -53,6 +53,8 @@ const apps = [
       HOST: '127.0.0.1',
       PORT: 3014,
       PUBLIC_BASE_URL: 'http://bgremove.recipehubapi.com',
+      INSPIRENET_MAX_SOURCE_EDGE: '2048',
+      INSPIRENET_WORKER_TIMEOUT_MS: '32000',
     },
   },
 ];
@@ -61,8 +63,8 @@ if (readPhotoEngine() === 'inspyrenet') {
   apps.push({
     name: 'inspyrenet-worker',
     cwd: repoRoot,
-    script: 'eval/inspyrenet/worker.py',
-    interpreter: workerPython,
+    script: 'eval/inspyrenet/scripts/run-worker-linux.sh',
+    interpreter: 'bash',
     instances: 1,
     exec_mode: 'fork',
     autorestart: true,
@@ -72,8 +74,9 @@ if (readPhotoEngine() === 'inspyrenet') {
       INSPIRENET_MODE: 'base',
       INSPIRENET_RESIZE: 'static',
       INSPIRENET_VPS_CPU_LIMIT: '4',
-      INSPIRENET_TORCH_THREADS: '4',
+      INSPIRENET_TORCH_THREADS: '6',
       INSPIRENET_PNG_COMPRESS_LEVEL: '1',
+      INSPIRENET_TORCH_COMPILE: '1',
     },
   });
 }
