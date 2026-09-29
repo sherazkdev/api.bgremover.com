@@ -82,7 +82,7 @@ export class BackgroundRemovalProcessor {
 
     if (
       this.photoEngine === 'inspyrenet' &&
-      input.mode === 'person' &&
+      INSPIRENET_PHOTO_MODES.has(input.mode) &&
       this.inspyrenetClient
     ) {
       return this.processInspyrenetPhoto(input);

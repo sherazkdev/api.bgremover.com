@@ -9,7 +9,7 @@
   },
   "scripts": {
     "dev": "tsx watch src/server.ts",
-    "worker:inspyrenet": "eval/inspyrenet/.venv/Scripts/python.exe eval/inspyrenet/worker.py",
+    "worker:inspyrenet": "node eval/inspyrenet/scripts/start-worker.mjs",
     "bench:inspyrenet:stage1": "node --import tsx/esm eval/inspyrenet/stage1-api-benchmark.mjs",
     "probe:inspyrenet:runtime": "eval/inspyrenet/.venv/Scripts/python.exe eval/inspyrenet/probe_optimized_runtime.py",
     "worker:inspyrenet:resolve": "node eval/inspyrenet/scripts/resolve-worker.mjs",
