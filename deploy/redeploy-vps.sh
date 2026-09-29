@@ -42,6 +42,10 @@ if [[ "$ENGINE" == "inspyrenet" ]]; then
   if [[ ! -x eval/inspyrenet/.venv/bin/python ]] || ! eval/inspyrenet/.venv/bin/python -c "from PIL import Image" 2>/dev/null; then
     install_inspyrenet_venv
   fi
+  if [[ -d eval/inspyrenet/scripts ]]; then
+    find eval/inspyrenet/scripts -name '*.sh' -exec sed -i 's/\r$//' {} + 2>/dev/null || true
+    chmod +x eval/inspyrenet/scripts/*.sh 2>/dev/null || true
+  fi
 fi
 
 pm2_start_or_reload

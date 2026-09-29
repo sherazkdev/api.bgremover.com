@@ -99,16 +99,20 @@ pm2_start_or_reload() {
 
 wait_inspyrenet_worker() {
   local url="${1:-http://127.0.0.1:8765}"
-  echo "Waiting for worker at $url (first load can take ~90s)..."
+  echo "Waiting for worker at $url (model load often ~60-120s on CPU)..."
   local i
-  for i in $(seq 1 36); do
+  for i in $(seq 1 48); do
     if curl -sf "${url%/}/health" >/dev/null; then
       curl -sf "${url%/}/health" | python3 -m json.tool || true
       return 0
     fi
+    if (( i % 3 == 0 )); then
+      pm2 describe inspyrenet-worker 2>/dev/null | grep -E 'status|restarts|uptime' || true
+    fi
     sleep 10
   done
-  echo "Worker not ready at $url — check: pm2 logs inspyrenet-worker" >&2
+  echo "Worker not ready at $url — last PM2 logs:" >&2
+  pm2 logs inspyrenet-worker --lines 40 --nostream 2>/dev/null || true
   return 1
 }
 

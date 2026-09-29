@@ -63,8 +63,8 @@ if (readPhotoEngine() === 'inspyrenet') {
   apps.push({
     name: 'inspyrenet-worker',
     cwd: repoRoot,
-    script: 'eval/inspyrenet/scripts/run-worker-linux.sh',
-    interpreter: 'bash',
+    script: 'eval/inspyrenet/worker.py',
+    interpreter: workerPython,
     instances: 1,
     exec_mode: 'fork',
     autorestart: true,
@@ -74,9 +74,10 @@ if (readPhotoEngine() === 'inspyrenet') {
       INSPIRENET_MODE: 'base',
       INSPIRENET_RESIZE: 'static',
       INSPIRENET_VPS_CPU_LIMIT: '4',
-      INSPIRENET_TORCH_THREADS: '6',
+      INSPIRENET_TORCH_THREADS: '4',
       INSPIRENET_PNG_COMPRESS_LEVEL: '1',
-      INSPIRENET_TORCH_COMPILE: '1',
+      // torch.compile first load can hang 10+ min or OOM on shared CPU VPS — keep off in PM2.
+      INSPIRENET_TORCH_COMPILE: '0',
     },
   });
 }
