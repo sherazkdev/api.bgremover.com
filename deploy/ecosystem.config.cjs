@@ -55,6 +55,7 @@ const apps = [
       PUBLIC_BASE_URL: 'http://bgremove.recipehubapi.com',
       INSPIRENET_MAX_SOURCE_EDGE: '2048',
       INSPIRENET_WORKER_TIMEOUT_MS: '32000',
+      INSPIRENET_WORKER_INIT_TIMEOUT_MS: '180000',
     },
   },
 ];

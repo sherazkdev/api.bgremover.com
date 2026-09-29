@@ -7,7 +7,10 @@ export class InspyrenetWorkerClient {
   constructor(
     private readonly env: Pick<
       Env,
-      'INSPIRENET_WORKER_URL' | 'INSPIRENET_WORKER_TIMEOUT_MS' | 'INSPIRENET_WORKER_TOKEN'
+      | 'INSPIRENET_WORKER_URL'
+      | 'INSPIRENET_WORKER_TIMEOUT_MS'
+      | 'INSPIRENET_WORKER_INIT_TIMEOUT_MS'
+      | 'INSPIRENET_WORKER_TOKEN'
     >,
   ) {}
 
@@ -19,8 +22,28 @@ export class InspyrenetWorkerClient {
     return this.ready;
   }
 
+  /** Live worker /health — updates cached ready (fixes API boot before worker is up). */
+  public async probeHealth(): Promise<boolean> {
+    try {
+      const response = await fetch(`${this.baseUrl}/health`, {
+        signal: AbortSignal.timeout(5000),
+        headers: this.authHeaders(),
+      });
+      if (!response.ok) {
+        this.ready = false;
+        return false;
+      }
+      const body = (await response.json()) as { ready?: boolean };
+      this.ready = body.ready === true;
+      return this.ready;
+    } catch {
+      this.ready = false;
+      return false;
+    }
+  }
+
   public async initialize(): Promise<void> {
-    const deadline = Date.now() + this.env.INSPIRENET_WORKER_TIMEOUT_MS;
+    const deadline = Date.now() + this.env.INSPIRENET_WORKER_INIT_TIMEOUT_MS;
     let lastError = 'Worker not reachable';
     while (Date.now() < deadline) {
       try {
@@ -57,7 +80,7 @@ export class InspyrenetWorkerClient {
     workerInferMs: number;
     workerPngMs: number;
   }> {
-    if (!this.ready) {
+    if (!this.ready && !(await this.probeHealth())) {
       throw processingFailedError('InSPyReNet worker is not ready');
     }
     const controller = new AbortController();

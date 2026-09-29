@@ -32,7 +32,8 @@ export function createHealthController(deps: HealthDependencies) {
       const queue = deps.queue.stats;
       const storageReady = await deps.storage.ensureReady();
       const workerReady =
-        deps.photoEngine !== 'inspyrenet' || (deps.inspyrenetClient?.isReady() ?? false);
+        deps.photoEngine !== 'inspyrenet' ||
+        (deps.inspyrenetClient ? await deps.inspyrenetClient.probeHealth() : false);
       const isReady = model.state === 'ready' && storageReady && workerReady;
       const status = isReady ? 'ready' : 'not_ready';
 
@@ -47,7 +48,7 @@ export function createHealthController(deps: HealthDependencies) {
           },
           photoEngine: deps.photoEngine,
           inspyrenetWorker: {
-            ready: deps.inspyrenetClient?.isReady() ?? false,
+            ready: workerReady,
             url: deps.inspyrenetClient?.baseUrl ?? null,
           },
           queue: {
